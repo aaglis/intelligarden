@@ -1,0 +1,24 @@
+# ===== Segredos e configuração local (nunca versionar) =====
+.env
+.env.*
+!.env.example
+secrets.h
+*.pem
+*.key
+
+# ===== Dependências e artefatos de build =====
+node_modules/
+target/
+dist/
+.angular/
+out-tsc/
+coverage/
+
+# ===== Logs =====
+*.log
+
+# ===== Editores e sistema =====
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db

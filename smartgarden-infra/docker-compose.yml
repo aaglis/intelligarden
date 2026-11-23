@@ -1,0 +1,66 @@
+name: smartgarden-infra
+
+services:
+  postgres:
+    image: postgres:16
+    container_name: smartgarden-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-smartgarden}
+      POSTGRES_USER: ${POSTGRES_USER:-smartgarden}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-smartgarden}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-smartgarden} -d ${POSTGRES_DB:-smartgarden}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  mosquitto-auth:
+    image: eclipse-mosquitto:2
+    restart: "no"
+    user: "0:0"
+    environment:
+      MQTT_PASSWORD: ${MQTT_PASSWORD:-smartgarden_mqtt}
+    entrypoint: ["/bin/sh", "-ec"]
+    command:
+      - |
+        umask 0077
+        rm -f /mosquitto/auth/passwords
+        mosquitto_passwd -b -c /mosquitto/auth/passwords smartgarden "$$MQTT_PASSWORD"
+        printf 'user smartgarden\ntopic readwrite smartgarden/devices/+/telemetry\n' > /mosquitto/auth/acl
+        chown mosquitto:mosquitto /mosquitto/auth/passwords
+        chown mosquitto:mosquitto /mosquitto/auth/acl
+        chmod 0700 /mosquitto/auth/passwords
+        chmod 0700 /mosquitto/auth/acl
+    volumes:
+      - mosquitto_auth:/mosquitto/auth
+
+  mosquitto:
+    image: eclipse-mosquitto:2
+    container_name: smartgarden-mosquitto
+    restart: unless-stopped
+    depends_on:
+      mosquitto-auth:
+        condition: service_completed_successfully
+    ports:
+      - "${MQTT_PORT:-1883}:1883"
+    volumes:
+      - ./mosquitto/config:/mosquitto/config:ro
+      - mosquitto_auth:/mosquitto/auth
+      - mosquitto_data:/mosquitto/data
+      - mosquitto_log:/mosquitto/log
+
+volumes:
+  # Nomes mantidos para reutilizar os dados criados pelo Compose antigo do backend.
+  postgres_data:
+    name: smartgarden-back_postgres_data
+  mosquitto_data:
+    name: smartgarden-back_mosquitto_data
+  mosquitto_log:
+    name: smartgarden-back_mosquitto_log
+  mosquitto_auth:
+    name: smartgarden_mosquitto_auth
