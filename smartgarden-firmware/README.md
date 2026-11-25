@@ -1,34 +1,23 @@
 # SmartGarden Firmware
 
-Firmware do projeto **SmartGarden**, um sistema de monitoramento ambiental para jardins inteligentes usando **ESP32** e sensor **DHT22**.
+Firmware do sensor do ambiente do projeto (ESP32 + DHT22). A cada 30 s ele lê **temperatura** e **umidade do ar** e publica a leitura no broker **MQTT** (Mosquitto do `smartgarden-infra`). O backend assina o tópico e grava as leituras no PostgreSQL.
 
-Esta versao realiza a leitura de **temperatura** e **umidade do ar**, exibe os dados no **Monitor Serial** e envia as leituras para o backend Spring Boot via HTTP.
-
----
-
-## Objetivo
-
-O objetivo deste firmware é coletar informações ambientais do jardim, como:
-
-- temperatura do ar;
-- umidade relativa do ar;
-- status básico do ambiente.
-
-Esses dados futuramente serão enviados para um sistema web com dashboard administrativo.
+```
+ESP32 + DHT22 ──MQTT──▶ Mosquitto ──▶ Spring Boot ──▶ PostgreSQL
+```
 
 ---
 
-## Tecnologias e componentes utilizados
+## Componentes e bibliotecas
 
 - ESP32 Dev Module
 - Sensor DHT22
-- Arduino IDE
-- Biblioteca DHT sensor library by Adafruit
-- Biblioteca Adafruit Unified Sensor
-- WiFi.h
-- HTTPClient.h
+- DHT sensor library (Adafruit) e Adafruit Unified Sensor
+- PubSubClient (Nick O'Leary), cliente MQTT
 
----
+```bash
+arduino-cli lib install "DHT sensor library" "Adafruit Unified Sensor" PubSubClient
+```
 
 ## Ligações do sensor DHT22
 
@@ -38,15 +27,9 @@ Esses dados futuramente serão enviados para um sistema web com dashboard admini
 | GND | GND |
 | DATA | GPIO 4 |
 
-No codigo atual, o pino de dados esta configurado como:
+## Configuração antes de gravar na placa
 
-```cpp
-#define DHTPIN 4
-```
-
-## Configuracao antes de gravar na placa
-
-As credenciais do Wi-Fi e a URL do backend ficam em `esp32-dht22-serial/secrets.h`, que está no `.gitignore` e não vai para o repositório. Crie o arquivo a partir do modelo:
+O Wi-Fi e os dados do broker ficam em `esp32-dht22-serial/secrets.h`, que está no `.gitignore` e não vai para o repositório. Crie o arquivo a partir do modelo:
 
 ```bash
 cp esp32-dht22-serial/secrets.example.h esp32-dht22-serial/secrets.h
@@ -55,14 +38,17 @@ cp esp32-dht22-serial/secrets.example.h esp32-dht22-serial/secrets.h
 E preencha:
 
 ```cpp
-const char* WIFI_SSID = "SEU_WIFI";        // rede 2,4 GHz
+const char* WIFI_SSID = "SEU_WIFI";          // rede 2,4 GHz
 const char* WIFI_PASSWORD = "SUA_SENHA";
-const char* API_URL = "http://192.168.0.10:8080/api/readings";
+const char* MQTT_HOST = "192.168.0.10";      // IP da máquina do broker, nunca localhost
+const uint16_t MQTT_PORT = 1883;
+const char* MQTT_USER = "smartgarden";
+const char* MQTT_PASSWORD = "SUA_SENHA_MQTT";  // MQTT_PASSWORD do smartgarden-infra/.env
 ```
 
 Sem o `secrets.h`, a compilação para com uma mensagem explicando o que fazer.
 
-O código do dispositivo continua no `esp32-dht22-serial.ino`:
+O código do dispositivo fica no `esp32-dht22-serial.ino` e também define o tópico:
 
 ```cpp
 const char* DEVICE_CODE = "esp32-jardim-bloco-a";
@@ -75,50 +61,42 @@ arduino-cli compile --fqbn esp32:esp32:esp32 esp32-dht22-serial
 arduino-cli upload -p /dev/ttyACM0 --fqbn esp32:esp32:esp32 esp32-dht22-serial
 ```
 
-No Linux, o usuário precisa de acesso à porta serial (`sudo usermod -aG dialout $USER` e novo login).
+No Linux, o usuário precisa de acesso à porta serial: `sudo usermod -aG dialout $USER` e novo login.
 
-## Importante sobre a URL do backend
+## Mensagem publicada
 
-No `API_URL`, voce deve usar o IP da maquina que esta rodando o backend na sua rede local.
-
-Exemplo:
+Tópico:
 
 ```text
-http://192.168.0.10:8080/api/readings
+smartgarden/devices/esp32-jardim-bloco-a/telemetry
 ```
 
-Nao use:
-
-```text
-http://localhost:8080/api/readings
-```
-
-O motivo é que, para o ESP32, `localhost` aponta para o proprio ESP32 e nao para o seu computador.
-
-## Payload enviado para o backend
-
-O firmware envia um `POST` para o backend com este JSON:
+Payload (JSON):
 
 ```json
 {
-  "deviceCode": "esp32-jardim-bloco-a",
+  "messageId": "6f1c2a9e-4b7d-4c1e-9a3f-2d8b5e7c1a40",
   "temperatureC": 27.40,
-  "humidityPercent": 63.10
+  "humidityPercent": 63.10,
+  "recordedAt": "2026-11-25T15:30:00Z"
 }
 ```
 
-Esse payload e compativel com o endpoint:
-
-```text
-POST /api/readings
-```
+- `messageId`: UUID gerado no ESP32. O backend ignora mensagens com um id que já recebeu.
+- `recordedAt`: horário da leitura em UTC, acertado por NTP. Enquanto o relógio não sincroniza, o campo é omitido e o backend usa o horário de chegada.
 
 ## Como testar
 
-1. Suba o backend e o banco.
-2. Confirme que o backend responde em `http://SEU_IP:8080/swagger-ui.html`.
-3. Grave o firmware no ESP32.
-4. Abra o monitor serial em `115200`.
-5. Verifique se aparecem os logs de leitura e o `HTTP status` do envio.
+1. Suba a infra (`smartgarden-infra`) e o backend.
+2. Grave o firmware e abra o monitor serial em 115200 (`arduino-cli monitor -p /dev/ttyACM0 -c baudrate=115200`).
+3. Devem aparecer `MQTT conectado.` e, a cada 30 s, `Publicado.`.
+4. Para ver as mensagens chegando no broker:
 
-Se o envio estiver funcionando, voce deve ver respostas `201` no monitor serial e os registros aparecendo no PostgreSQL.
+```bash
+docker exec smartgarden-mosquitto mosquitto_sub -u smartgarden -P "$MQTT_PASSWORD" \
+  -t 'smartgarden/devices/+/telemetry' -v
+```
+
+Se aparecer `Falha no MQTT, estado: -2`, o ESP32 não alcança o broker (IP errado ou porta 1883 bloqueada). Estado `4` ou `5` indica usuário ou senha incorretos.
+
+O backend ainda aceita `POST /api/readings`, útil para testes sem o dispositivo.

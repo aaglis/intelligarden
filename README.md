@@ -3,9 +3,9 @@
 Sistema de monitoramento ambiental de jardins com ESP32 e sensor DHT22: o dispositivo mede temperatura e umidade do ar, o backend armazena e analisa as leituras e o frontend mostra dashboard, monitoramento em tempo real e relatórios.
 
 ```
-ESP32 + DHT22 ──HTTP/MQTT──▶ Spring Boot ──▶ PostgreSQL
-                                  │
-                                  └──REST/SSE──▶ Angular
+ESP32 + DHT22 ──MQTT──▶ Mosquitto ──▶ Spring Boot ──▶ PostgreSQL
+                                           │
+                                           └──REST/SSE──▶ Angular
 ```
 
 ## Estrutura
@@ -16,6 +16,7 @@ ESP32 + DHT22 ──HTTP/MQTT──▶ Spring Boot ──▶ PostgreSQL
 | [`smartgarden-back`](smartgarden-back) | Backend Java 21 / Spring Boot (REST, MQTT, SSE) |
 | [`smartgarden-front`](smartgarden-front) | Frontend Angular 19 |
 | [`smartgarden-infra`](smartgarden-infra) | PostgreSQL e Mosquitto via Docker Compose |
+| [`intelligarden-web`](intelligarden-web) | Protótipo 3D da nova interface (IntelliGarden) |
 
 Cada pasta tem seu próprio README com instruções detalhadas.
 

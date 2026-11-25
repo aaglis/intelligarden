@@ -8,6 +8,10 @@
 const char* WIFI_SSID = "SEU_WIFI";
 const char* WIFI_PASSWORD = "SUA_SENHA";
 
-// IP da máquina que roda o backend, na mesma rede do ESP32 (veja com: ip addr).
+// Broker MQTT (Mosquitto do smartgarden-infra).
+// Use o IP da máquina que roda o broker, na mesma rede do ESP32 (veja com: ip addr).
 // Não use localhost: para o ESP32, localhost é ele mesmo.
-const char* API_URL = "http://192.168.0.10:8080/api/readings";
+const char* MQTT_HOST = "192.168.0.10";
+const uint16_t MQTT_PORT = 1883;
+const char* MQTT_USER = "smartgarden";
+const char* MQTT_PASSWORD = "SUA_SENHA_MQTT";  // o mesmo MQTT_PASSWORD do smartgarden-infra/.env
