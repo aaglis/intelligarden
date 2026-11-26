@@ -255,6 +255,9 @@ textarea.txt:focus { border-color: var(--ink); }
 .toast-i svg { width: 17px; height: 17px; }
 .toast-i.water { color: var(--water); }
 .toast-i.ok { color: var(--leaf); }
+.toast-i.warn { color: var(--warn); }
+.sensor .live.off { background: var(--muted); box-shadow: 0 0 0 3px color-mix(in srgb, var(--muted) 22%, transparent); }
+.st-none { --c: var(--surface-3); }
 .t1 { font-size: 14px; font-weight: 600; }
 .t2 { margin-top: 1px; font-size: 13px; opacity: 0.75; }
 .fallback { position: absolute; inset: 0; display: grid; place-items: center; padding: 24px; text-align: center; color: var(--muted); }
@@ -298,10 +301,10 @@ textarea.txt:focus { border-color: var(--ink); }
   <header class="top">
     <div class="brand">
       <p class="brand-name"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21v-8"/><path d="M12 13c0-4.5 3-7.5 8-8 0 5-3 8-8 8z"/><path d="M12 15c0-3.5-2.4-6-6.5-6.5 0 4 2.4 6.5 6.5 6.5z"/></svg>IntelliGarden</p>
-      <p class="brand-meta">Cantinho da janela<span class="wide"> · 3,6 × 2,8 m · 6 plantas</span></p>
+      <p class="brand-meta">Cantinho da janela<span class="wide"> · 3,6 × 2,8 m · <span id="plant-count">6 plantas</span></span><span id="demo-tag" hidden> · dados de exemplo</span></p>
     </div>
-    <button type="button" class="sensor" id="sensor-btn" aria-label="Sensor IG-01 online: 25,5 graus, 45 por cento de umidade. Abrir detalhes do sensor.">
-      <span class="live" aria-hidden="true"></span><span>25,5 °C</span><span>45 %</span><span class="faint">IG-01</span>
+    <button type="button" class="sensor" id="sensor-btn" aria-label="Sensor IG-01: carregando. Abrir detalhes do sensor.">
+      <span class="live off" id="sensor-dot" aria-hidden="true"></span><span id="sensor-t">-- °C</span><span id="sensor-h">-- %</span><span class="faint">IG-01</span>
     </button>
   </header>
 
@@ -341,6 +344,7 @@ textarea.txt:focus { border-color: var(--ink); }
           <label class="field-l" for="peso">Peso do vaso agora</label>
           <div class="big-in"><input id="peso" name="peso" inputmode="decimal" autocomplete="off" placeholder="0"><span>g</span></div>
           <p class="help" id="peso-help"></p>
+          <label class="check"><input type="checkbox" id="peso-cheio" name="peso-cheio">Acabei de regar e escorrer: vaso cheio</label>
           <div class="compare" id="peso-cmp" hidden></div>
           <p class="err" id="peso-err" hidden>Digite o peso em gramas, por exemplo 1340.</p>
         </section>
@@ -355,15 +359,16 @@ textarea.txt:focus { border-color: var(--ink); }
           <div class="chips" id="obs-chips" role="group" aria-labelledby="obs-l"></div>
           <label class="field-l" for="obs-text">Anotação</label>
           <textarea class="txt" id="obs-text" name="obs-text" placeholder="Ex.: duas folhas novas saindo"></textarea>
-          <div class="photo-row">
+          <div class="photo-row" id="obs-foto-row">
             <label class="photo" for="obs-foto"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>Adicionar foto<input type="file" id="obs-foto" name="obs-foto" accept="image/*"></label>
             <img class="photo-prev" id="obs-prev" alt="Prévia da foto anexada" hidden>
           </div>
         </section>
+        <p class="err" id="reg-err" role="alert" hidden></p>
       </div>
       <footer class="reg-foot">
         <button type="button" class="btn btn-soft" data-close>Cancelar</button>
-        <button type="submit" class="btn btn-primary">Salvar registro</button>
+        <button type="submit" class="btn btn-primary" id="reg-save">Salvar registro</button>
       </footer>
     </form>
   </dialog>
@@ -390,7 +395,10 @@ const WIN = { x0: -0.85, x1: 0.85, y0: 0.62, y1: 2.32 };
 const SILL_Y = 0.65;
 const CUT = 0.24;
 const FULL = ROOM.h + 0.6;
-const CLIMATE = { temp: 25.5, rh: 45, vpd: 1.8 };
+/* clima da sala: ao vivo vem da última leitura do sensor; sem servidor, dos dados de exemplo */
+const CLIMATE = { temp: null, rh: null, vpd: null };
+/* mesma conta do backend: pressão de saturação pela FAO-56 (eq. 11) */
+const vpdOf = (t, rh) => 0.6108 * Math.exp((17.27 * t) / (t + 237.3)) * (1 - clamp(rh, 0, 100) / 100);
 
 let seed = 11;
 const rnd = () => { seed = (seed + 0x6D2B79F5) | 0; let t = Math.imul(seed ^ (seed >>> 15), 1 | seed); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
@@ -413,8 +421,10 @@ const I = {
 };
 
 /* ---------------- dados ---------------- */
-const STATUS = { ok: 'Tudo certo', warn: 'Clima fora do ideal', water: 'Precisa de água' };
-/* Ordem da esquerda para a direita no cantinho, para as setas andarem em sequência. */
+const STATUS = { ok: 'Tudo certo', warn: 'Clima fora do ideal', water: 'Precisa de água', none: 'Carregando' };
+/* Ordem da esquerda para a direita no cantinho, para as setas andarem em sequência.
+   Posição, modelo e enquadramento são da maquete. Os números abaixo são só os dados de exemplo:
+   com o servidor no ar, água, limites, faixas de clima e registros vêm da API. */
 const plants = [
   { id: 'lirio', name: 'Lírio-da-paz', short: 'Lírio-da-paz', sci: 'Spathiphyllum wallisii', kind: 'lily',
     pos: [-1.3, 0, -0.58], yaw: 0.78, pitch: 0.4, view: 1.55, spot: 'No chão, no canto · sombra clara',
@@ -464,10 +474,382 @@ const plants = [
     events: [{ type: 'rega', title: 'Rega: 300 mL', detail: 'feita pela equipe', when: 'há 9 dias' }] }
 ];
 const byId = Object.fromEntries(plants.map((p) => [p.id, p]));
-const inRange = (v, r) => v >= r[0] && v <= r[1];
+const inRange = (v, r) => v == null || ((r[0] == null || v >= r[0]) && (r[1] == null || v <= r[1]));
 function statusOf(p) {
+  if (!booted) return 'none';
   if (p.water <= p.limit) return 'water';
   return inRange(CLIMATE.temp, p.temp) && inRange(CLIMATE.rh, p.rh) ? 'ok' : 'warn';
+}
+
+/* ---------------- servidor ---------------- */
+/* Ao vivo, plantas, clima, status do sensor e registros vêm do backend (REST + eventos SSE).
+   Se o servidor não responder, a página usa os dados de exemplo e avisa no topo.
+   ?demo força o exemplo; ?api=http://host:8080 e ?device=codigo mudam o alvo. */
+const QS = new URLSearchParams(location.search);
+const API = (QS.get('api') || (location.protocol.startsWith('http') ? `${location.protocol}//${location.hostname}:8080` : 'http://localhost:8080')).replace(/\/+$/, '');
+const DEVICE = QS.get('device') || 'esp32-jardim-bloco-a';
+const READ_EVERY_S = 30; /* intervalo de leitura do firmware */
+let booted = false;
+const live = { on: false, conn: false, lost: false, device: null, readingAt: null, seen: new Set(), irrigating: false };
+
+async function api(path, opts = {}) {
+  /* o prazo vale só até o servidor responder: com o 3D pesado, a página pode demorar para ler o corpo */
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), opts.timeout || 10000);
+  try {
+    const res = await fetch(API + path, {
+      method: opts.method || 'GET',
+      headers: opts.body ? { 'Content-Type': 'application/json' } : undefined,
+      body: opts.body ? JSON.stringify(opts.body) : undefined,
+      signal: ctrl.signal
+    });
+    clearTimeout(timer);
+    const text = await res.text();
+    let data = null;
+    try { data = text ? JSON.parse(text) : null; } catch { data = null; }
+    if (!res.ok) {
+      const msg = data && Array.isArray(data.messages) && data.messages.length ? data.messages.join(' ') : null;
+      const err = new Error(msg || `O servidor respondeu com erro ${res.status}.`);
+      err.status = res.status;
+      throw err;
+    }
+    return data;
+  } catch (err) {
+    if (err.name === 'AbortError') throw new Error('O servidor demorou demais para responder.');
+    if (err instanceof TypeError) throw new Error('Sem conexão com o servidor.');
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+const plantPath = (p, rest = '') => `/api/plants/${encodeURIComponent(p.id)}${rest}`;
+
+/* ---------------- textos ---------------- */
+const nf1 = new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+const nf2 = new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const fmtN = (n, d = 1) => Number(n).toLocaleString('pt-BR', { maximumFractionDigits: d });
+const hhmm = (d) => d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+const dayStart = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+function dayWord(d) {
+  const diff = Math.round((dayStart(d) - dayStart(new Date())) / 864e5);
+  return diff === 0 ? 'hoje' : diff === 1 ? 'amanhã' : diff === -1 ? 'ontem' : null;
+}
+function whenText(iso) {
+  const d = new Date(iso), s = (Date.now() - d.getTime()) / 1000;
+  if (s < 60) return 'agora';
+  if (s < 3600) return `há ${Math.floor(s / 60)} min`;
+  const w = dayWord(d);
+  if (w === 'hoje' || w === 'ontem') return `${w}, ${hhmm(d)}`;
+  const days = Math.round((dayStart(new Date()) - dayStart(d)) / 864e5);
+  return days < 30 ? `há ${days} dias` : d.toLocaleDateString('pt-BR');
+}
+function agoText() {
+  if (!live.readingAt) return 'sem leitura';
+  const s = Math.max(0, Math.round((Date.now() - live.readingAt) / 1000));
+  if (s < 5) return 'agora';
+  if (s < 90) return `há ${s} s`;
+  if (s < 5400) return `há ${Math.round(s / 60)} min`;
+  return whenText(live.readingAt);
+}
+function nextText(p) {
+  const d = p.api;
+  if (!d) return `Próxima irrigação: ${p.next}.`;
+  if (d.needsWater || d.hoursToThreshold === 0) {
+    return p.auto ? 'Chegou ao limite: a irrigação simulada dispara na próxima leitura do sensor.' : 'Chegou ao limite: regue e registre a rega.';
+  }
+  const what = p.auto ? 'Próxima irrigação automática' : 'Próxima rega';
+  const h = d.hoursToThreshold;
+  if (h == null) return `${what}: sem previsão com o clima de agora.`;
+  const at = new Date(Date.parse(d.estimatedAt) + h * 3600e3);
+  at.setMinutes(Math.round(at.getMinutes() / 10) * 10, 0, 0);
+  let when;
+  if (h < 1) when = `em cerca de ${Math.max(5, Math.round(h * 12) * 5)} min`;
+  else if (h < 40 && dayWord(at)) when = `${dayWord(at)}, por volta das ${hhmm(at)}`;
+  else when = `em cerca de ${Math.max(2, Math.round(h / 24))} dias`;
+  return `${what}: ${when}, se o clima continuar assim.`;
+}
+function noteText(p) {
+  const d = p.api;
+  if (!d) return p.note;
+  const out = [];
+  if (p.water <= p.limit) out.push(p.auto ? 'A água estimada chegou ao limite.' : 'A água estimada chegou ao limite. Como é um vaso real, a equipe rega e registra.');
+  if (CLIMATE.temp == null) {
+    out.push('Ainda sem leitura do sensor.');
+  } else {
+    const [hLo, hHi] = p.rh, [tLo, tHi] = p.temp;
+    if (hLo != null && CLIMATE.rh < hLo) out.push(`O ar está mais seco do que ela gosta (ideal a partir de ${fmtN(hLo, 0)} %).`);
+    else if (hHi != null && CLIMATE.rh > hHi) out.push(`O ar está mais úmido do que ela gosta (ideal até ${fmtN(hHi, 0)} %).`);
+    if (tLo != null && CLIMATE.temp < tLo) out.push(`Está mais frio do que ela gosta (ideal a partir de ${fmtN(tLo, 0)} °C).`);
+    else if (tHi != null && CLIMATE.temp > tHi) out.push(`Está mais quente do que ela gosta (ideal até ${fmtN(tHi, 0)} °C).`);
+    if (out.length === 0) out.push('Clima bom para ela.');
+  }
+  if (d.lossMlPerHour != null) out.push(`Com o clima de agora, o vaso perde cerca de ${fmtN(d.lossMlPerHour, 1)} mL de água por hora.`);
+  return out.join(' ');
+}
+function fineText(p) {
+  const base = 'A água no vaso é estimada pelo clima, sem sensor no solo. A irrigação é simulada.';
+  const d = p.api;
+  if (!d) return `${base} Dados de exemplo, sem servidor.`;
+  if (!d.calibrationSamples) return `${base} Ainda sem pesagens para conferir a estimativa.`;
+  const n = d.calibrationSamples;
+  let t = ` Conferida com ${n} ${n === 1 ? 'pesagem' : 'pesagens'}`;
+  if (d.meanErrorPercent != null) t += `: erro médio de ${fmtN(d.meanErrorPercent, 0)} %`;
+  if (d.suggestedCoefficient != null) t += `. Coeficiente de perda sugerido ${fmtN(d.suggestedCoefficient, 2)} (em uso: ${fmtN(d.lossCoefficient, 2)})`;
+  return `${base}${t}.`;
+}
+function eventOf(r) {
+  const when = whenText(r.recordedAt);
+  if (r.type === 'weighing') {
+    let detail;
+    if (r.fullPot) detail = 'vaso cheio, virou a referência';
+    else if (r.measuredLossMl != null) detail = r.measuredLossMl > 0 ? `perdeu ${fmtInt(r.measuredLossMl)} mL, o sistema estimou ${fmtInt(r.estimatedLossMl)} mL` : 'mais pesado que na pesagem anterior';
+    else detail = 'sem comparação: primeira pesagem ou houve rega antes';
+    if (!r.fullPot && r.measuredWaterPercent != null) detail += ` · balança: ${Math.round(r.measuredWaterPercent)} % de água`;
+    return { type: 'pesagem', title: `Pesagem: ${fmtInt(r.weightGrams)} g`, detail, when };
+  }
+  if (r.type === 'watering') return { type: 'rega', title: `Rega: ${fmtInt(r.waterMl)} mL`, detail: r.drained ? 'feita pela equipe, escorrida' : 'feita pela equipe, sem confirmar o escoamento', when };
+  if (r.type === 'irrigation') {
+    return { type: 'irrigacao', title: `Irrigação ${r.automatic ? 'automática' : 'acionada'}: ${fmtInt(r.waterMl)} mL`,
+      detail: r.automatic ? `simulada, chegou ao limite (${Math.round(r.estimatedWaterPercent)} %)` : 'simulada pela interface', when };
+  }
+  return { type: 'obs', title: 'Observação', detail: r.note || '', when };
+}
+
+/* ---------------- dados ao vivo ---------------- */
+function applyApi(p, d, animate = true) {
+  p.api = d;
+  p.name = d.name || p.name;
+  p.sci = d.scientificName || p.sci;
+  p.spot = d.spot || p.spot;
+  p.limit = d.irrigationThresholdPercent;
+  p.temp = [d.temperatureMinC, d.temperatureMaxC];
+  p.rh = [d.humidityMinPercent, d.humidityMaxPercent];
+  p.recommend = d.irrigationMl;
+  p.lastWeight = d.lastWeightG;
+  p.estSince = d.estimatedLossSinceWeighingMl;
+  p.auto = d.autoIrrigation;
+  const w = clamp(d.estimatedWaterPercent, 0, 100);
+  const cur = p.waterAnim ? p.waterAnim.to : p.water;
+  if (!animate) { p.water = w; p.waterAnim = null; }
+  else if (Math.abs(w - cur) > 0.05) animateWater(p, w, Math.abs(w - cur) > 5 ? 1500 : 800);
+  refreshPlantUI(p, true);
+  refreshSheetText(p);
+}
+function addRecord(p, r) {
+  if (!p.records || p.records.some((x) => x.id === r.id)) return;
+  p.records.unshift(r);
+  refreshLog(p);
+}
+async function loadRecords(p) {
+  if (!live.on) return;
+  try {
+    p.records = await api(plantPath(p, '/records?limit=6'));
+    p.recordsErr = null;
+  } catch (err) {
+    p.recordsErr = err.message;
+  }
+  refreshLog(p);
+}
+function onReading(r) {
+  const at = Date.parse(r.recordedAt);
+  if (live.readingAt && at < live.readingAt) return;
+  live.readingAt = at;
+  CLIMATE.temp = Number(r.temperatureC);
+  CLIMATE.rh = Number(r.humidityPercent);
+  CLIMATE.vpd = vpdOf(CLIMATE.temp, CLIMATE.rh);
+  climateChanged();
+}
+function onDevice(d) {
+  live.device = d;
+  renderSensor();
+  refreshSensorSheet();
+}
+function climateChanged() {
+  renderSensor();
+  for (const p of plants) refreshPlantUI(p);
+  if (byId[selectedId]) refreshSheetText(byId[selectedId]);
+  refreshSensorSheet();
+}
+const ledSecondsFor = (ml) => clamp(Math.round(ml / 10), 1, 60);
+function canIrrigate(p) { return !!p && !rain && !live.irrigating && (!p.api || p.auto); }
+function showRain(p) {
+  p.obj.wet = 1;
+  if (rain) return;
+  rain = { p, until: performance.now() + 2400 };
+  const b = $('#s-irrigar');
+  if (b) b.disabled = true;
+}
+/* Irrigação vinda do servidor: automática (pelo sensor) ou pedida aqui. Chega pela resposta e pelo SSE; vale uma vez. */
+function onIrrigated(d, r) {
+  const p = byId[d.code];
+  if (!p || !plants.includes(p) || live.seen.has(r.id)) return;
+  live.seen.add(r.id);
+  showRain(p);
+  applyApi(p, d);
+  addRecord(p, r);
+  const s = ledSecondsFor(r.waterMl);
+  ledOnUntil = performance.now() + s * 1000;
+  toast(`${r.automatic ? 'Irrigação automática' : 'Irrigação acionada'} · ${p.name}`,
+    sensorOnline() ? `${fmtInt(r.waterMl)} mL · LED do IG-01 aceso por ${s} s` : `${fmtInt(r.waterMl)} mL · IG-01 offline, o LED não acende agora`, 'water');
+}
+
+async function loadAll() {
+  const dev = encodeURIComponent(DEVICE);
+  const [list, device, reading] = await Promise.all([
+    api(`/api/plants?deviceCode=${dev}`),
+    api(`/api/devices/${dev}`).catch(() => null),
+    api(`/api/readings/latest?deviceCode=${dev}`).catch(() => null)
+  ]);
+  return { list, device, reading };
+}
+function applyAll({ list, device, reading }, animate) {
+  for (const d of list) {
+    const p = byId[d.code];
+    if (p && plants.includes(p)) applyApi(p, d, animate);
+  }
+  if (device) onDevice(device);
+  if (reading) onReading(reading);
+}
+async function boot() {
+  let data = null, why = 'Modo de exemplo pedido no endereço (?demo).';
+  if (!QS.has('demo')) {
+    try {
+      data = await loadAll();
+      if (!data.list.some((d) => byId[d.code])) throw new Error(`Nenhuma planta da maquete está cadastrada para o sensor ${DEVICE}.`);
+    } catch (err) {
+      data = null;
+      why = err.message;
+    }
+  }
+  if (data) startLive(data); else startDemo(why);
+  booted = true;
+  for (const p of plants) refreshPlantUI(p, true);
+  renderSensor();
+}
+function startLive(data) {
+  live.on = true;
+  live.conn = true;
+  /* pode vir do exemplo (o servidor voltou): limpa o clima de exemplo antes de aplicar o real */
+  Object.assign(CLIMATE, { temp: null, rh: null, vpd: null });
+  live.readingAt = null;
+  $('#demo-tag').hidden = true;
+  const codes = new Set(data.list.map((d) => d.code));
+  for (const p of [...plants]) if (!codes.has(p.id)) dropPlant(p);
+  for (const d of data.list) if (!byId[d.code]) console.info(`IntelliGarden: a planta ${d.code} não tem modelo na maquete e fica fora do 3D.`);
+  applyAll(data, false);
+  $('#plant-count').textContent = `${plants.length} ${plants.length === 1 ? 'planta' : 'plantas'}`;
+  connectStream();
+  climateChanged();
+  const p = byId[selectedId];
+  if (p && plants.includes(p)) { renderSheet(plantSheet(p)); loadRecords(p); }
+  else if (p) back();
+  else if (selectedId === 'sensor') renderSheet(sensorSheet());
+}
+function startDemo(why) {
+  console.info(`IntelliGarden: dados de exemplo. ${why}`);
+  Object.assign(CLIMATE, { temp: 25.5, rh: 45, vpd: vpdOf(25.5, 45) });
+  live.readingAt = Date.now() - 12e3;
+  $('#demo-tag').hidden = false;
+  if (QS.has('demo')) return;
+  setTimeout(() => toast('Mostrando dados de exemplo', why, 'warn'), reduce ? 400 : 3200);
+  /* continua tentando: se o servidor subir depois, a página passa para os dados reais sozinha */
+  const retry = async () => {
+    try {
+      const data = await loadAll();
+      if (!data.list.some((d) => byId[d.code])) throw new Error('sem plantas da maquete');
+      startLive(data);
+      toast('Conectado ao servidor', 'Agora a página mostra os dados reais', 'ok');
+    } catch {
+      setTimeout(retry, 15000);
+    }
+  };
+  setTimeout(retry, 15000);
+}
+/* planta da maquete que não existe no servidor: some da sala, da lista e das setas */
+function dropPlant(p) {
+  plants.splice(plants.indexOf(p), 1);
+  p.group.visible = false;
+  dockEls[p.id].parentElement.remove();
+  mkEls[p.id].remove();
+}
+
+let stream = null, streamRetry = null;
+function connectStream() {
+  clearTimeout(streamRetry);
+  if (stream) stream.close();
+  stream = new EventSource(`${API}/api/events/readings?deviceCode=${encodeURIComponent(DEVICE)}`);
+  const on = (name, fn) => stream.addEventListener(name, (e) => {
+    let data;
+    try { data = JSON.parse(e.data); } catch { return; }
+    fn(data);
+  });
+  stream.addEventListener('connected', () => {
+    live.conn = true;
+    if (live.lost) { live.lost = false; resync(); }
+    renderSensor();
+    refreshSensorSheet();
+  });
+  on('reading-created', onReading);
+  on('device-status', onDevice);
+  on('plants-updated', (list) => list.forEach((d) => { const p = byId[d.code]; if (p && plants.includes(p)) applyApi(p, d); }));
+  on('plant-irrigated', (d) => onIrrigated(d.plant, d.record));
+  stream.onerror = () => {
+    live.conn = false;
+    live.lost = true;
+    renderSensor();
+    refreshSensorSheet();
+    /* o navegador reconecta sozinho; se ele desistir (resposta inválida), tenta de novo em 5 s */
+    if (stream.readyState === EventSource.CLOSED) streamRetry = setTimeout(connectStream, 5000);
+  };
+}
+/* depois de uma queda do SSE, busca tudo de novo para não ficar com dado velho */
+async function resync() {
+  try {
+    applyAll(await loadAll(), true);
+    const p = byId[selectedId];
+    if (p) loadRecords(p);
+  } catch {
+    /* a próxima reconexão tenta de novo */
+  }
+}
+
+/* ---------------- sensor ---------------- */
+function sensorOnline() {
+  if (!live.on) return booted;
+  return live.conn && !!live.device && live.device.online;
+}
+function sensorStatusText() {
+  if (!live.on) return `Exemplo · leitura ${agoText()}`;
+  if (!live.conn) return 'Sem conexão com o servidor';
+  if (!live.device || !live.device.online) return `Offline · última leitura ${agoText()}`;
+  return `Online · leitura ${agoText()}`;
+}
+const sensorStatusMarkup = () => `<span class="dot st-${sensorOnline() ? 'ok' : 'warn'}"></span><span>${esc(sensorStatusText())}</span>`;
+function renderSensor() {
+  const has = CLIMATE.temp != null, on = sensorOnline();
+  $('#sensor-t').textContent = has ? `${nf1.format(CLIMATE.temp)} °C` : '-- °C';
+  $('#sensor-h').textContent = has ? `${Math.round(CLIMATE.rh)} %` : '-- %';
+  $('#sensor-dot').classList.toggle('off', !on);
+  const read = has ? `: ${nf1.format(CLIMATE.temp)} graus, ${Math.round(CLIMATE.rh)} por cento de umidade` : '';
+  $('#sensor-btn').setAttribute('aria-label', `Sensor IG-01 ${booted ? (on ? 'online' : 'offline') : 'carregando'}${read}. Abrir detalhes do sensor.`);
+}
+function readsMarkup() {
+  const has = CLIMATE.temp != null;
+  return `<div><p class="lbl">Temperatura</p><p class="read">${has ? nf1.format(CLIMATE.temp) : '--'}<small>°C</small></p></div>
+      <div><p class="lbl">Umidade</p><p class="read">${has ? Math.round(CLIMATE.rh) : '--'}<small>%</small></p></div>
+      <div><p class="lbl">VPD</p><p class="read">${has ? nf2.format(CLIMATE.vpd) : '--'}<small>kPa</small></p></div>`;
+}
+function factsMarkup() {
+  const fact = (k, v) => `<div><dt>${k}</dt><dd>${esc(v)}</dd></div>`;
+  return fact('Leitura a cada', `${READ_EVERY_S} s`) + fact('Posição', 'Parede da janela, à sombra, 1,5 m do chão')
+    + (live.device && live.device.firmwareVersion ? fact('Firmware', live.device.firmwareVersion) : '');
+}
+function refreshSensorSheet() {
+  if (selectedId !== 'sensor') return;
+  const set = (id, html) => { const el = document.getElementById(id); if (el) el.innerHTML = html; };
+  set('s-sstatus', sensorStatusMarkup());
+  set('s-reads', readsMarkup());
+  set('s-facts', factsMarkup());
 }
 
 /* ---------------- renderer ---------------- */
@@ -1370,6 +1752,7 @@ plants.forEach((p, i) => {
     blob(body, 0, 0, 0, spec.r * (spec.saucer ? 2.7 : 2.5), spec.r * (spec.saucer ? 2.7 : 2.5), 0.42);
   }
   group.add(inner);
+  p.group = group;
   group.traverse((o) => { o.userData.plantId = p.id; });
   plantRoot.add(group);
   p.base = new V3(p.pos[0], p.pos[1] + body.position.y, p.pos[2]);
@@ -1575,7 +1958,7 @@ function rememberReturn() {
 }
 function focusPlant(id, focusAct) {
   const p = byId[id];
-  if (!p) return;
+  if (!p || !booted || !plants.includes(p)) return;
   const swap = mode === 'focus';
   rememberReturn();
   selectedId = id;
@@ -1585,8 +1968,10 @@ function focusPlant(id, focusAct) {
   fly(st, swap ? 1.05 : 1.3);
   renderSheet(plantSheet(p), swap, focusAct);
   openSheet();
+  loadRecords(p);
 }
 function focusSensor() {
+  if (!booted) return;
   const swap = mode === 'focus';
   rememberReturn();
   selectedId = 'sensor';
@@ -1677,15 +2062,15 @@ function refreshPlantUI(p, force) {
   const v = Math.round(p.water), st = statusOf(p);
   if (!force && p._v === v && p._st === st) return;
   p._v = v; p._st = st;
-  const label = `${p.name}: ${STATUS[st].toLowerCase()}, água estimada ${v} %`;
+  const label = booted ? `${p.name}: ${STATUS[st].toLowerCase()}, água estimada ${v} %` : `${p.name}: carregando`;
   const d = dockEls[p.id];
-  d.classList.remove('st-ok', 'st-warn', 'st-water');
+  d.classList.remove('st-ok', 'st-warn', 'st-water', 'st-none');
   d.classList.add(`st-${st}`);
-  d.querySelector('.pb-pct').textContent = `${v}%`;
-  d.querySelector('.pb-bar i').style.width = `${p.water}%`;
+  d.querySelector('.pb-pct').textContent = booted ? `${v}%` : '…';
+  d.querySelector('.pb-bar i').style.width = `${booted ? p.water : 0}%`;
   d.setAttribute('aria-label', label);
   const m = mkEls[p.id];
-  m.classList.remove('st-ok', 'st-warn', 'st-water');
+  m.classList.remove('st-ok', 'st-warn', 'st-water', 'st-none');
   m.classList.add(`st-${st}`);
   m.querySelector('b').textContent = `${v} %`;
   m.firstElementChild.setAttribute('aria-label', label);
@@ -1703,7 +2088,7 @@ function updateMarkers() {
     const el = mkEls[p.id];
     proj.copy(p.anchor).project(camera);
     const x = ((proj.x + 1) / 2) * viewW, y = ((1 - proj.y) / 2) * viewH;
-    const off = mode === 'focus' || mode === 'intro' || p.obj.grow < 0.98 || proj.z > 1 || x < -20 || x > viewW + 20 || y < -20 || y > viewH + 20;
+    const off = !booted || mode === 'focus' || mode === 'intro' || p.obj.grow < 0.98 || proj.z > 1 || x < -20 || x > viewW + 20 || y < -20 || y > viewH + 20;
     el.classList.toggle('is-off', off);
     el.classList.toggle('flip', x > viewW - 240);
     el.style.transform = `translate3d(${x.toFixed(1)}px, ${y.toFixed(1)}px, 0)`;
@@ -1714,17 +2099,47 @@ function updateMarkers() {
 const sheet = $('#sheet');
 let sheetOpener = null;
 function rangeText(v, r, unit) {
+  if (r[0] == null || r[1] == null) return { ok: true, text: 'Sem faixa ideal cadastrada' };
   if (v < r[0]) return { ok: false, text: `Abaixo do ideal (${r[0]}–${r[1]} ${unit})` };
   if (v > r[1]) return { ok: false, text: `Acima do ideal (${r[0]}–${r[1]} ${unit})` };
   return { ok: true, text: `Dentro do ideal (${r[0]}–${r[1]} ${unit})` };
 }
 function logMarkup(p) {
-  return p.events.slice(0, 4).map((e) => `<li class="ev-${e.type}"><span class="ldot" aria-hidden="true"></span><div><p class="l-t">${esc(e.title)}</p><p class="l-d"><span class="l-when">${esc(e.when)}</span>${e.detail ? ` · ${esc(e.detail)}` : ''}</p>${e.photo ? `<img class="l-photo" src="${e.photo}" alt="Foto anexada à observação">` : ''}</div></li>`).join('');
+  const evs = p.api ? (p.records || []).slice(0, 4).map(eventOf) : p.events.slice(0, 4);
+  if (!evs.length) {
+    const msg = !p.api ? 'Nenhum registro ainda.' : p.records ? 'Nenhum registro ainda. Use Registrar para a primeira pesagem.' : p.recordsErr ? `Não deu para carregar os registros. ${p.recordsErr}` : 'Carregando…';
+    return `<li><span class="ldot" aria-hidden="true"></span><div><p class="l-d">${esc(msg)}</p></div></li>`;
+  }
+  return evs.map((e) => `<li class="ev-${e.type}"><span class="ldot" aria-hidden="true"></span><div><p class="l-t">${esc(e.title)}</p><p class="l-d"><span class="l-when">${esc(e.when)}</span>${e.detail ? ` · ${esc(e.detail)}` : ''}</p>${e.photo ? `<img class="l-photo" src="${e.photo}" alt="Foto anexada à observação">` : ''}</div></li>`).join('');
+}
+function refreshLog(p) {
+  if (selectedId !== p.id) return;
+  const l = $('#s-log');
+  if (l) l.innerHTML = logMarkup(p);
+}
+function climateRows(p) {
+  if (CLIMATE.temp == null) return '<div><dt>Ainda sem leitura do sensor</dt><dd>--</dd></div>';
+  const t = rangeText(CLIMATE.temp, p.temp, '°C'), h = rangeText(CLIMATE.rh, p.rh, '%');
+  const row = (label, val, r) => `<div><dt>${label}</dt><dd>${val}</dd><p class="range ${r.ok ? 'ok' : 'bad'}">${r.ok ? I.check : I.alert}${r.text}</p></div>`;
+  return row('Temperatura', `${nf1.format(CLIMATE.temp)} °C`, t) + row('Umidade do ar', `${Math.round(CLIMATE.rh)} %`, h);
+}
+function irrigateButton(p) {
+  if (p.api && !p.auto) return `<button type="button" class="btn btn-soft" id="s-irrigar" disabled title="Vaso real: a equipe rega e registra na aba Rega">${I.drop}Vaso real</button>`;
+  return `<button type="button" class="btn btn-soft" data-act="irrigar" id="s-irrigar"${canIrrigate(p) ? '' : ' disabled'}>${I.drop}Simular irrigação</button>`;
+}
+/* atualiza só os textos da ficha aberta (sem redesenhar e perder a rolagem) */
+function refreshSheetText(p) {
+  if (selectedId !== p.id) return;
+  const set = (id, v, html) => { const el = document.getElementById(id); if (el) el[html ? 'innerHTML' : 'textContent'] = v; };
+  set('s-next', nextText(p));
+  set('s-note', noteText(p));
+  set('s-fine', fineText(p));
+  set('s-climate', climateRows(p), true);
+  const b = $('#s-irrigar');
+  if (b && b.dataset.act) b.disabled = !canIrrigate(p);
 }
 function plantSheet(p) {
   const st = statusOf(p), i = plants.indexOf(p), v = Math.round(p.water);
-  const t = rangeText(CLIMATE.temp, p.temp, '°C'), h = rangeText(CLIMATE.rh, p.rh, '%');
-  const row = (label, val, r) => `<div><dt>${label}</dt><dd>${val}</dd><p class="range ${r.ok ? 'ok' : 'bad'}">${r.ok ? I.check : I.alert}${r.text}</p></div>`;
   return `
   <header class="s-head">
     <div class="s-nav">
@@ -1747,27 +2162,25 @@ function plantSheet(p) {
       <div class="gauge" id="s-gauge" role="meter" aria-label="Água estimada no vaso" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${v}">
         <i class="gauge-fill" id="s-wfill" style="width:${p.water}%"></i><i class="gauge-limit" style="left:${p.limit}%"></i>
       </div>
-      <div class="gauge-scale"><span style="left:clamp(34px, ${p.limit}%, calc(100% - 34px))">limite ${p.limit} %</span></div>
-      <p class="s-text" id="s-next">Próxima irrigação: ${esc(p.next)}.</p>
+      <div class="gauge-scale"><span style="left:clamp(34px, ${p.limit}%, calc(100% - 34px))">limite ${fmtN(p.limit)} %</span></div>
+      <p class="s-text" id="s-next">${esc(nextText(p))}</p>
     </section>
     <section aria-label="Clima agora">
       <p class="lbl">Clima agora</p>
-      <dl class="climate">${row('Temperatura', '25,5 °C', t)}${row('Umidade do ar', '45 %', h)}</dl>
-      <p class="s-text muted" id="s-note">${esc(p.note)}</p>
+      <dl class="climate" id="s-climate">${climateRows(p)}</dl>
+      <p class="s-text muted" id="s-note">${esc(noteText(p))}</p>
     </section>
     <section aria-label="Últimos registros">
       <p class="lbl">Últimos registros</p>
       <ol class="log" id="s-log">${logMarkup(p)}</ol>
     </section>
-    <p class="s-fine">A água no vaso é estimada pelo clima, sem sensor no solo. A irrigação é simulada.</p>
+    <p class="s-fine" id="s-fine">${esc(fineText(p))}</p>
   </div>
   <footer class="s-foot">
     <button type="button" class="btn btn-primary" data-act="registro">${I.plus}Registrar</button>
-    <button type="button" class="btn btn-soft" data-act="irrigar" id="s-irrigar"${rain ? ' disabled' : ''}>${I.drop}Simular irrigação</button>
+    ${irrigateButton(p)}
   </footer>`;
 }
-let ago = 12;
-const agoText = () => (ago === 0 ? 'agora' : `há ${ago} s`);
 function sensorSheet() {
   return `
   <header class="s-head">
@@ -1776,23 +2189,16 @@ function sensorSheet() {
   </header>
   <div class="s-scroll" id="s-scroll">
     <div class="s-id">
-      <p class="s-status"><span class="dot st-ok"></span><span>Online · leitura <span id="s-ago">${agoText()}</span></span></p>
+      <p class="s-status" id="s-sstatus">${sensorStatusMarkup()}</p>
       <h2 class="s-title" id="s-title">Sensor IG-01</h2>
       <p class="s-sci">ESP32 com DHT22 · mede o ar da sala</p>
     </div>
-    <div class="reads">
-      <div><p class="lbl">Temperatura</p><p class="read">25,5<small>°C</small></p></div>
-      <div><p class="lbl">Umidade</p><p class="read">45<small>%</small></p></div>
-      <div><p class="lbl">VPD</p><p class="read">1,8<small>kPa</small></p></div>
-    </div>
+    <div class="reads" id="s-reads">${readsMarkup()}</div>
     <section>
       <p class="s-text">O VPD mostra o quanto o ar está seco. Ele é calculado a partir da temperatura e da umidade, e é ele que define o ritmo em que cada vaso perde água na estimativa.</p>
-      <dl class="facts">
-        <div><dt>Leitura a cada</dt><dd>1 min</dd></div>
-        <div><dt>Posição</dt><dd>Parede da janela, à sombra, 1,5 m do chão</dd></div>
-      </dl>
+      <dl class="facts" id="s-facts">${factsMarkup()}</dl>
     </section>
-    <p class="s-fine">No sistema real, o botão abaixo envia um comando ao ESP32. Aqui o LED pisca só na maquete.</p>
+    <p class="s-fine">${live.on ? 'O botão abaixo manda o comando ao ESP32 pelo MQTT: o LED da placa pisca, e o da maquete junto.' : 'Dados de exemplo, sem servidor: o LED pisca só na maquete.'}</p>
   </div>
   <footer class="s-foot">
     <button type="button" class="btn btn-primary" data-act="identify">${I.pulse}Piscar LED</button>
@@ -1841,31 +2247,56 @@ sheet.addEventListener('click', (e) => {
   else if (a === 'next') stepPlant(1);
   else if (a === 'registro') openReg(byId[selectedId]);
   else if (a === 'irrigar') irrigate(byId[selectedId]);
-  else if (a === 'identify') { blinkUntil = performance.now() + 3000; toast('LED do IG-01 piscando', 'Use para achar o aparelho certo na sala', 'ok'); }
+  else if (a === 'identify') identify(b);
 });
+async function identify(b) {
+  blinkUntil = performance.now() + 3000;
+  if (!live.on) { toast('LED do IG-01 piscando', 'Exemplo: só na maquete, sem servidor', 'ok'); return; }
+  b.disabled = true;
+  try {
+    const r = await api(`/api/devices/${encodeURIComponent(DEVICE)}/commands`, { method: 'POST', body: { command: 'identify' } });
+    if (r && r.deviceOnline === false) toast('O IG-01 está offline', 'O comando não chega à placa agora', 'warn');
+    else toast('LED do IG-01 piscando', 'Use para achar o aparelho certo na sala', 'ok');
+  } catch (err) {
+    toast('O comando não foi enviado', err.message, 'warn');
+  } finally {
+    setTimeout(() => { b.disabled = false; }, 1500);
+  }
+}
 function addEvent(p, ev) {
   p.events.unshift(ev);
-  if (selectedId === p.id) { const l = $('#s-log'); if (l) l.innerHTML = logMarkup(p); }
+  refreshLog(p);
 }
 function animateWater(p, to, ms) { p.waterAnim = { from: p.water, to, t0: performance.now(), dur: reduce ? 1 : ms }; }
-function irrigate(p) {
-  if (!p || rain) return;
+async function irrigate(p) {
+  if (!canIrrigate(p)) return;
+  if (!live.on) { demoIrrigate(p); return; }
+  live.irrigating = true;
   const btn = $('#s-irrigar');
   if (btn) btn.disabled = true;
-  rain = { p, until: performance.now() + 2400 };
-  p.obj.wet = 1;
+  try {
+    const r = await api(plantPath(p, '/irrigations'), { method: 'POST' });
+    const d = await api(plantPath(p)).catch(() => null);
+    onIrrigated(d || Object.assign({}, p.api, { code: p.id }), r);
+  } catch (err) {
+    toast('A irrigação não foi registrada', err.message, 'warn');
+  } finally {
+    live.irrigating = false;
+    const b = $('#s-irrigar');
+    if (b && b.dataset.act) b.disabled = !canIrrigate(byId[selectedId]);
+  }
+}
+function demoIrrigate(p) {
+  showRain(p);
   const ml = p.recommend;
   setTimeout(() => {
     animateWater(p, 100, 1500);
     p.next = p.nextAfter;
-    p.note = 'Irrigada agora na demonstração. A estimativa recomeçou com o vaso cheio.';
-    addEvent(p, { type: 'irrigacao', title: `Irrigação acionada: ${ml} mL`, detail: 'simulada na demonstração', when: 'agora' });
-    if (selectedId === p.id) {
-      const n = $('#s-next'), note = $('#s-note');
-      if (n) n.textContent = `Próxima irrigação: ${p.next}.`;
-      if (note) note.textContent = p.note;
-    }
-    toast(`Irrigação acionada · ${p.name}`, `${ml} mL · simulação, sem bomba conectada`, 'water');
+    p.note = 'Irrigada agora no exemplo. A estimativa recomeçou com o vaso cheio.';
+    addEvent(p, { type: 'irrigacao', title: `Irrigação acionada: ${ml} mL`, detail: 'simulada no exemplo', when: 'agora' });
+    refreshSheetText(p);
+    ledOnUntil = performance.now() + ledSecondsFor(ml) * 1000;
+    toast(`Irrigação acionada · ${p.name}`, `${ml} mL · exemplo, sem servidor`, 'water');
   }, 600);
 }
 
@@ -1876,7 +2307,7 @@ function toast(t1, t2, tone) {
   $('#toast-t2').textContent = t2 || '';
   const i = $('#toast-i');
   i.className = `toast-i ${tone}`;
-  i.innerHTML = tone === 'water' ? I.drop : I.check;
+  i.innerHTML = tone === 'water' ? I.drop : tone === 'warn' ? I.alert : I.check;
   const el = $('#toast');
   el.classList.add('show');
   clearTimeout(toastTimer);
@@ -1886,7 +2317,7 @@ function toast(t1, t2, tone) {
 /* ---------------- registro diário (modal) ---------------- */
 const dlg = $('#reg');
 const form = $('#reg-form');
-let regPlant = null, regTab = 'pesagem', regAmount = 200, obsPicked = new Set(), obsPhoto = null;
+let regPlant = null, regTab = 'pesagem', regAmount = 200, obsPicked = new Set(), obsPhoto = null, saving = false;
 const AMOUNTS = [100, 150, 200, 300];
 const SIGNS = ['Folhas amareladas', 'Pontas secas', 'Terra seca ao toque', 'Folhas murchas', 'Pragas visíveis', 'Folhas novas'];
 const parseNum = (s) => parseFloat(String(s).trim().replace(/\./g, '').replace(',', '.'));
@@ -1900,16 +2331,31 @@ function renderChips() {
   $('#obs-chips').innerHTML = SIGNS.map((s) => `<button type="button" class="chip" data-sign="${esc(s)}" aria-pressed="${obsPicked.has(s)}">${esc(s)}</button>`).join('');
 }
 function updateCompare() {
-  const p = regPlant, box = $('#peso-cmp');
+  const p = regPlant, box = $('#peso-cmp'), d = p.api;
   const w = parseNum($('#peso').value);
   $('#peso-err').hidden = true;
   if (!isFinite(w) || w <= 0) { box.hidden = true; return; }
-  const loss = Math.round(p.lastWeight - w);
   box.hidden = false;
+  box.className = 'compare';
+  if ($('#peso-cheio').checked) {
+    box.innerHTML = `<strong>Vira o peso de vaso cheio: ${fmtInt(w)} g</strong><span>As próximas pesagens medem a água pela diferença para este peso.</span>`;
+    return;
+  }
+  /* com o peso de vaso cheio conhecido, a balança diz quanto de água há (1 g = 1 mL) */
+  const scale = d && d.fullWeightG != null
+    ? ` Pela balança, o vaso está com ${Math.round(clamp((d.waterCapacityMl - (d.fullWeightG - w)) / d.waterCapacityMl, 0, 1) * 100)} % de água.` : '';
+  if (p.lastWeight == null) {
+    box.innerHTML = `<strong>Primeira pesagem desta planta</strong><span>Ela vira o ponto de partida para comparar com as próximas.${scale}</span>`;
+    return;
+  }
+  if (d && d.wateredSinceWeighing) {
+    box.innerHTML = `<strong>Houve rega depois da última pesagem</strong><span>Esta pesagem não compara perdas; vira o novo ponto de partida.${scale}</span>`;
+    return;
+  }
+  const loss = Math.round(p.lastWeight - w), est = Math.round(p.estSince);
   if (loss > 0) {
-    const diff = Math.round((Math.abs(loss - p.estSince) / loss) * 100);
-    box.className = 'compare';
-    box.innerHTML = `<strong>Perdeu ${fmtInt(loss)} g, ou ${fmtInt(loss)} mL de água</strong><span>O sistema estimou ${p.estSince} mL desde a última pesagem · diferença de ${diff} %</span>`;
+    const diff = Math.round((Math.abs(loss - est) / loss) * 100);
+    box.innerHTML = `<strong>Perdeu ${fmtInt(loss)} g, ou ${fmtInt(loss)} mL de água</strong><span>O sistema estimou ${fmtInt(est)} mL desde a última pesagem · diferença de ${diff} %.${scale}</span>`;
   } else {
     box.className = 'compare warn';
     box.innerHTML = '<strong>O vaso está mais pesado que na última pesagem</strong><span>Se você regou, registre também na aba Rega.</span>';
@@ -1922,10 +2368,17 @@ function openReg(p) {
   obsPicked = new Set();
   obsPhoto = null;
   form.reset();
+  setSaving(false);
+  $('#reg-err').hidden = true;
   $('#reg-title').textContent = p.name;
-  $('#peso').placeholder = fmtInt(p.lastWeight - p.estSince);
-  $('#peso-help').textContent = `Última pesagem: ${fmtInt(p.lastWeight)} g. Pese sem o pratinho, na mesma balança e no mesmo horário.`;
+  const lastAt = p.api && p.api.lastWeighedAt ? ` (${whenText(p.api.lastWeighedAt)})` : '';
+  $('#peso').placeholder = p.lastWeight != null ? fmtInt(p.lastWeight - p.estSince) : '0';
+  $('#peso-help').textContent = p.lastWeight != null
+    ? `Última pesagem: ${fmtInt(p.lastWeight)} g${lastAt}. Pese sem o pratinho, na mesma balança e no mesmo horário.`
+    : 'Ainda não há pesagem desta planta. Pese sem o pratinho, sempre na mesma balança e no mesmo horário.';
   $('#obs-prev').hidden = true;
+  /* a foto ainda não é guardada no servidor: ao vivo, o campo some em vez de fingir que salvou */
+  $('#obs-foto-row').hidden = live.on;
   if (!AMOUNTS.includes(p.recommend)) $('#rega-ml').value = String(p.recommend);
   renderChips();
   setRegTab('pesagem');
@@ -1966,34 +2419,82 @@ $('#obs-foto').addEventListener('change', (e) => {
   r.readAsDataURL(f);
 });
 $('#peso').addEventListener('input', updateCompare);
-form.addEventListener('submit', (e) => {
+$('#peso-cheio').addEventListener('change', updateCompare);
+function setSaving(on) {
+  saving = on;
+  const b = $('#reg-save');
+  b.disabled = on;
+  b.textContent = on ? 'Salvando…' : 'Salvar registro';
+}
+function showRegErr(msg) {
+  const el = $('#reg-err');
+  el.textContent = msg;
+  el.hidden = false;
+}
+function savedText(p, r) {
+  if (r.type === 'weighing') {
+    if (r.fullPot) return `${p.name} · peso de vaso cheio guardado`;
+    if (r.measuredLossMl > 0) return `Perdeu ${fmtInt(r.measuredLossMl)} mL; o sistema estimou ${fmtInt(r.estimatedLossMl)} mL`;
+    return `${p.name} · pesagem`;
+  }
+  if (r.type === 'watering') return `${p.name} · rega de ${fmtInt(r.waterMl)} mL`;
+  return `${p.name} · observação`;
+}
+form.addEventListener('submit', async (e) => {
   e.preventDefault();
   const p = regPlant;
-  if (!p) return;
-  let kind = 'observação';
+  if (!p || saving) return;
+  $('#reg-err').hidden = true;
+  let body;
   if (regTab === 'pesagem') {
     const w = parseNum($('#peso').value);
     if (!isFinite(w) || w <= 0) { $('#peso-err').hidden = false; $('#peso').focus(); return; }
-    const loss = Math.round(p.lastWeight - w);
-    const detail = loss > 0 ? `perdeu ${fmtInt(loss)} mL, o sistema estimou ${p.estSince} mL` : 'mais pesado que na última pesagem';
+    body = { type: 'weighing', weightGrams: w, fullPot: $('#peso-cheio').checked };
+  } else if (regTab === 'rega') {
+    if (!(regAmount >= 1 && regAmount <= 5000)) { showRegErr('A quantidade de água deve ficar entre 1 e 5.000 mL.'); return; }
+    body = { type: 'watering', waterMl: regAmount, drained: $('#rega-esc').checked };
+  } else {
+    const note = [...obsPicked, $('#obs-text').value.trim()].filter(Boolean).join(' · ');
+    if (live.on && !note) { showRegErr('Escolha um dos sinais ou escreva uma anotação.'); return; }
+    if (note.length > 500) { showRegErr('A anotação pode ter até 500 caracteres.'); return; }
+    body = { type: 'observation', note };
+  }
+  if (!live.on) { demoRecord(p, body); return; }
+  setSaving(true);
+  try {
+    const r = await api(plantPath(p, '/records'), { method: 'POST', body });
+    const d = await api(plantPath(p)).catch(() => null);
+    if (d) applyApi(p, d);
+    addRecord(p, r);
+    if (r.type === 'watering') p.obj.wet = Math.max(p.obj.wet, 0.8);
+    closeReg();
+    toast('Registro salvo', savedText(p, r), 'ok');
+  } catch (err) {
+    showRegErr(err.message);
+  } finally {
+    setSaving(false);
+  }
+});
+/* sem servidor: o registro fica só nesta página */
+function demoRecord(p, body) {
+  if (body.type === 'weighing') {
+    const w = body.weightGrams, loss = Math.round(p.lastWeight - w);
+    const detail = body.fullPot ? 'vaso cheio, virou a referência' : loss > 0 ? `perdeu ${fmtInt(loss)} mL, o sistema estimou ${p.estSince} mL` : 'mais pesado que na última pesagem';
     addEvent(p, { type: 'pesagem', title: `Pesagem: ${fmtInt(w)} g`, detail, when: 'agora' });
     p.lastWeight = w;
     p.estSince = 0;
-    kind = 'pesagem';
-  } else if (regTab === 'rega') {
-    const drained = $('#rega-esc').checked;
-    addEvent(p, { type: 'rega', title: `Rega: ${regAmount} mL`, detail: drained ? 'escorrida, pratinho vazio' : 'sem confirmar o escoamento', when: 'agora' });
-    animateWater(p, Math.min(100, p.water + (regAmount / p.recommend) * (100 - p.limit)), 1200);
+    if (body.fullPot) animateWater(p, 100, 1200);
+  } else if (body.type === 'watering') {
+    addEvent(p, { type: 'rega', title: `Rega: ${body.waterMl} mL`, detail: body.drained ? 'escorrida, pratinho vazio' : 'sem confirmar o escoamento', when: 'agora' });
+    animateWater(p, Math.min(100, p.water + (body.waterMl / p.recommend) * (100 - p.limit)), 1200);
     p.obj.wet = Math.max(p.obj.wet, 0.8);
-    kind = 'rega';
   } else {
-    const text = $('#obs-text').value.trim();
-    const detail = [...obsPicked, text].filter(Boolean).join(' · ') || 'sem detalhes';
-    addEvent(p, { type: 'obs', title: 'Observação', detail, when: 'agora', photo: obsPhoto });
+    addEvent(p, { type: 'obs', title: 'Observação', detail: body.note || 'sem detalhes', when: 'agora', photo: obsPhoto });
   }
   closeReg();
-  toast('Registro salvo', `${p.name} · ${kind}`, 'ok');
-});
+  toast('Registro salvo', `${p.name} · exemplo, não vai para o servidor`, 'ok');
+}
+
 
 /* ---------------- entrada: arrastar, pinça, roda, clique ---------------- */
 const raycaster = new THREE.Raycaster();
@@ -2114,7 +2615,7 @@ document.addEventListener('keydown', (e) => {
 });
 
 /* ---------------- loop ---------------- */
-let blinkUntil = 0;
+let blinkUntil = 0, ledOnUntil = 0;
 const wetColor = new THREE.Color('#24170F');
 const tmp = new V3();
 function updateWalls(dt, t) {
@@ -2189,7 +2690,7 @@ function updateParticles(dt, now) {
   if (rain && now > rain.until + 900) {
     rain = null;
     const b = $('#s-irrigar');
-    if (b) b.disabled = false;
+    if (b && b.dataset.act) b.disabled = !canIrrigate(byId[selectedId]);
   }
   dropGeo.attributes.position.needsUpdate = true;
   if (!reduce && air.visible) {
@@ -2203,6 +2704,7 @@ function updateParticles(dt, now) {
 }
 function updateLED(t, now) {
   if (now < blinkUntil) ledMat.emissiveIntensity = Math.floor(t * 9) % 2 ? 4 : 0.05;
+  else if (now < ledOnUntil) ledMat.emissiveIntensity = 4; /* irrigação: aceso direto, como o LED da placa */
   else ledMat.emissiveIntensity = reduce ? 1.5 : 1.1 + Math.sin(t * 3) * 0.6;
 }
 function readTheme() {
@@ -2280,10 +2782,14 @@ function tick(now) {
   requestAnimationFrame(tick);
 }
 
+let secs = 0;
 setInterval(() => {
-  ago = (ago + 1) % 60;
-  const el = document.getElementById('s-ago');
-  if (el) el.textContent = agoText();
+  secs++;
+  /* exemplo: finge uma leitura a cada 30 s para o "há X s" andar */
+  if (booted && !live.on && Date.now() - live.readingAt > READ_EVERY_S * 1000) live.readingAt = Date.now();
+  const st = document.getElementById('s-sstatus');
+  if (st) st.innerHTML = sensorStatusMarkup();
+  if (secs % 30 === 0 && byId[selectedId]) refreshLog(byId[selectedId]);
 }, 1000);
 
 readTheme();
@@ -2306,6 +2812,7 @@ resize();
   }
 }
 requestAnimationFrame(tick);
+boot();
 </script>
 </body>
 </html>

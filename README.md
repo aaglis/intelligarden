@@ -1,11 +1,11 @@
 # SmartGarden
 
-Jardim virtual com ESP32 e sensor DHT22: o dispositivo mede temperatura e umidade do ar; o backend guarda as leituras, estima a água no vaso de cada planta pelo clima (VPD × k, calibrado com pesagens) e dispara a irrigação simulada (LED do ESP32) quando uma planta chega no limite. O frontend mostra o jardim, o monitoramento em tempo real e relatórios.
+Jardim virtual com ESP32 e sensor DHT22: o dispositivo mede temperatura e umidade do ar; o backend guarda as leituras, estima a água no vaso de cada planta pelo clima (VPD × k, calibrado com pesagens) e dispara a irrigação simulada (LED do ESP32) quando uma planta chega no limite. A interface 3D (`intelligarden-web`) mostra o jardim com esses dados em tempo real; o frontend Angular traz o monitoramento e os relatórios.
 
 ```
 ESP32 + DHT22 ──MQTT──▶ Mosquitto ──▶ Spring Boot ──▶ PostgreSQL
                                            │
-                                           └──REST/SSE──▶ Angular
+                                           └──REST/SSE──▶ Angular e interface 3D
 ```
 
 ## Estrutura
@@ -16,7 +16,7 @@ ESP32 + DHT22 ──MQTT──▶ Mosquitto ──▶ Spring Boot ──▶ Post
 | [`smartgarden-back`](smartgarden-back) | Backend Java 21 / Spring Boot (REST, MQTT, SSE, água estimada das plantas) |
 | [`smartgarden-front`](smartgarden-front) | Frontend Angular 19 |
 | [`smartgarden-infra`](smartgarden-infra) | PostgreSQL e Mosquitto via Docker Compose |
-| [`intelligarden-web`](intelligarden-web) | Protótipo 3D da nova interface (IntelliGarden) |
+| [`intelligarden-web`](intelligarden-web) | Nova interface 3D (IntelliGarden), ligada ao backend |
 
 Cada pasta tem seu próprio README com instruções detalhadas.
 
@@ -32,6 +32,9 @@ cd smartgarden-back && mvn spring-boot:run
 
 # 3. Frontend (porta 4200, com proxy de /api para o backend)
 cd smartgarden-front && pnpm install && pnpm start
+
+# 4. Interface 3D (porta 5173)
+cd intelligarden-web && python3 -m http.server 5173
 ```
 
 Para gravar o ESP32, crie `smartgarden-firmware/esp32-dht22-serial/secrets.h` a partir de `secrets.example.h` (veja o README do firmware).

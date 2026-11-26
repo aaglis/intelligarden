@@ -65,6 +65,8 @@ mvn spring-boot:run
 
 Sem o `.env` e sem as variáveis, a aplicação não sobe e acusa `Could not resolve placeholder 'POSTGRES_PASSWORD'` (ou `MQTT_PASSWORD`).
 
+CORS: por padrão aceita o Angular (`http://localhost:4200`) e o protótipo 3D (`http://localhost:5173`). Para abrir as páginas por outro endereço (outro computador da rede, por exemplo), defina `SMARTGARDEN_CORS_ALLOWED_ORIGINS` com as origens separadas por vírgula.
+
 ## Swagger / OpenAPI
 
 Com a aplicação no ar, a documentação interativa fica em:
@@ -162,7 +164,7 @@ As 6 plantas do protótipo 3D já vêm cadastradas (migração `V6`), ligadas ao
 
 `GET /api/plants` (opcional `?deviceCode=`) e `GET /api/plants/{code}`
 
-Cada planta traz `estimatedWaterMl`, `estimatedWaterPercent`, `lastVpdKpa`, `lossMlPerHour` (ritmo com o clima atual), `hoursToThreshold` (horas até o limite se o clima continuar igual), `needsWater` e os dados de pesagem e calibração.
+Cada planta traz `estimatedWaterMl`, `estimatedWaterPercent`, `lastVpdKpa`, `lossMlPerHour` (ritmo com o clima atual), `hoursToThreshold` (horas até o limite se o clima continuar igual), `needsWater` e os dados de pesagem e calibração (`wateredSinceWeighing` diz se houve rega depois da última pesagem, caso em que a próxima não compara perdas).
 
 ### Cadastrar e alterar planta
 

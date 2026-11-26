@@ -56,6 +56,8 @@ public record PlantResponse(
         OffsetDateTime lastWeighedAt,
         @Schema(description = "Perda estimada desde a última pesagem (mL)", example = "35.2")
         double estimatedLossSinceWeighingMl,
+        @Schema(description = "Houve rega ou irrigação depois da última pesagem (a próxima pesagem não compara perdas)")
+        boolean wateredSinceWeighing,
         @Schema(description = "Pesagens com comparação medida × estimada usadas na calibração", example = "4")
         int calibrationSamples,
         @Schema(description = "k sugerido pelas pesagens (mediana das últimas 10)", example = "3.1")
@@ -93,6 +95,7 @@ public record PlantResponse(
                 plant.getLastWeightG(),
                 plant.getLastWeighedAt(),
                 round(plant.getEstimatedLossSinceWeighingMl(), 1),
+                plant.isWateredSinceWeighing(),
                 plant.getCalibrationSamples(),
                 round(plant.getSuggestedCoefficient(), 3),
                 round(plant.getMeanErrorPercent(), 1)
