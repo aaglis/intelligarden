@@ -29,6 +29,13 @@ spring:
   mvc:
     problemdetails:
       enabled: false
+  # A interface 3D (pasta ../intelligarden-web) é servida em /. no-cache faz o navegador conferir
+  # se a página mudou a cada visita, para não ficar com uma versão antiga depois de atualizar.
+  web:
+    resources:
+      cache:
+        cachecontrol:
+          no-cache: true
 
 server:
   port: ${PORT:8080}

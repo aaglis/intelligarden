@@ -16,7 +16,7 @@ ESP32 + DHT22 ──MQTT──▶ Mosquitto ──▶ Spring Boot ──▶ Post
 | [`smartgarden-back`](smartgarden-back) | Backend Java 21 / Spring Boot (REST, MQTT, SSE, água estimada das plantas) |
 | [`smartgarden-front`](smartgarden-front) | Frontend Angular 19 |
 | [`smartgarden-infra`](smartgarden-infra) | PostgreSQL e Mosquitto via Docker Compose |
-| [`intelligarden-web`](intelligarden-web) | Nova interface 3D (IntelliGarden), ligada ao backend |
+| [`intelligarden-web`](intelligarden-web) | Nova interface 3D (IntelliGarden), servida pelo backend em `/` |
 
 Cada pasta tem seu próprio README com instruções detalhadas.
 
@@ -27,15 +27,14 @@ Cada pasta tem seu próprio README com instruções detalhadas.
 cd smartgarden-infra && cp .env.example .env   # troque cada troque_esta_senha (openssl rand -hex 16)
 docker compose up -d && cd ..
 
-# 2. Backend (porta 8080)
+# 2. Backend (porta 8080) — também serve a interface 3D em http://localhost:8080/
 cd smartgarden-back && mvn spring-boot:run
 
 # 3. Frontend (porta 4200, com proxy de /api para o backend)
 cd smartgarden-front && pnpm install && pnpm start
-
-# 4. Interface 3D (porta 5173)
-cd intelligarden-web && python3 -m http.server 5173
 ```
+
+A interface 3D não precisa de um passo próprio: abra `http://localhost:8080/`, ou `http://IP-da-máquina:8080/` de outro aparelho da rede. Ela funciona sem internet. Para mexer na página sem reiniciar o backend, veja o README do `intelligarden-web`.
 
 Para gravar o ESP32, crie `smartgarden-firmware/esp32-dht22-serial/secrets.h` a partir de `secrets.example.h` (veja o README do firmware).
 

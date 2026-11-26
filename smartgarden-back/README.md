@@ -65,7 +65,9 @@ mvn spring-boot:run
 
 Sem o `.env` e sem as variáveis, a aplicação não sobe e acusa `Could not resolve placeholder 'POSTGRES_PASSWORD'` (ou `MQTT_PASSWORD`).
 
-CORS: por padrão aceita o Angular (`http://localhost:4200`) e o protótipo 3D (`http://localhost:5173`). Para abrir as páginas por outro endereço (outro computador da rede, por exemplo), defina `SMARTGARDEN_CORS_ALLOWED_ORIGINS` com as origens separadas por vírgula.
+**Interface 3D:** o backend também serve a página do `intelligarden-web` em `http://localhost:8080/` (ou `http://IP-da-máquina:8080/` de outro aparelho da mesma rede). No build, o Maven copia `../intelligarden-web/index.html` e `vendor/` para `static/`; depois de mudar a página, reinicie o backend para ela ser copiada de novo. A página vai com `Cache-Control: no-cache`, para o navegador não ficar com uma versão antiga.
+
+CORS: só importa quando a página está em outro endereço. Por padrão aceita o Angular (`http://localhost:4200`) e o 3D servido à parte (`http://localhost:5173`). Para outras origens, defina `SMARTGARDEN_CORS_ALLOWED_ORIGINS` com as origens separadas por vírgula.
 
 ## Swagger / OpenAPI
 

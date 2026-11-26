@@ -1,4 +1,4 @@
-# IntelliGarden Web (protótipo 3D)
+# IntelliGarden Web (interface 3D)
 
 Nova interface do IntelliGarden: um "cantinho da janela" em 3D (three.js) com 6 plantas, sensor IG-01, ficha da planta, registro diário e irrigação simulada.
 
@@ -6,16 +6,19 @@ A página mostra os **dados reais do backend**: água estimada de cada planta, c
 
 ## Como abrir
 
-É um único arquivo, sem build. Precisa de internet (three.js e fontes vêm de CDN).
+**Pelo backend (o jeito normal, e o da apresentação):** com o backend no ar, abra `http://localhost:8080/`. De outro aparelho na mesma rede (celular, notebook do professor), use `http://IP-da-máquina:8080/` (o IP sai em `hostname -I`). O backend copia esta pasta no build; depois de mudar a página, reinicie o backend.
+
+**Para mexer na página** (sem reiniciar o backend a cada mudança):
 
 ```bash
-# backend no ar (porta 8080), veja o README da raiz
 cd intelligarden-web
 python3 -m http.server 5173
-# abra http://localhost:5173
+# abra http://localhost:5173 (a página procura o backend na porta 8080 do mesmo host)
 ```
 
-Por padrão a página procura o backend no mesmo computador, na porta 8080, e acompanha o sensor `esp32-jardim-bloco-a`. Parâmetros no endereço:
+Não precisa de internet: o three.js 0.160.0 e as fontes (Bricolage Grotesque, Geist e Geist Mono) estão em `vendor/`, com as licenças (MIT e SIL OFL 1.1). Abrir o arquivo direto (`file://`) não funciona, porque o navegador bloqueia os módulos locais; use um dos dois endereços acima.
+
+Por padrão a página usa o backend do mesmo endereço (ou a porta 8080, quando aberta na 5173) e acompanha o sensor `esp32-jardim-bloco-a`. Parâmetros no endereço:
 
 | Parâmetro | Exemplo | Para quê |
 |---|---|---|

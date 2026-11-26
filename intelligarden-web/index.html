@@ -4,9 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>IntelliGarden 3D</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,600&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="vendor/fonts/fonts.css">
 <style>
 /* Layout: palco 3D em tela cheia, a sala é uma maquete branca com paredes cortadas (poché escuro) e as plantas são a única cor.
    Topo: marca + leitura do sensor. Base: dock com vista e plantas. Ficha da planta desliza da direita (folha inferior no celular). */
@@ -375,7 +373,7 @@ textarea.txt:focus { border-color: var(--ink); }
 </div>
 
 <script type="importmap">
-{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js", "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/" } }
+{ "imports": { "three": "./vendor/three/three.module.min.js", "three/addons/": "./vendor/three/addons/" } }
 </script>
 <script type="module">
 import * as THREE from 'three';
@@ -484,9 +482,10 @@ function statusOf(p) {
 /* ---------------- servidor ---------------- */
 /* Ao vivo, plantas, clima, status do sensor e registros vêm do backend (REST + eventos SSE).
    Se o servidor não responder, a página usa os dados de exemplo e avisa no topo.
-   ?demo força o exemplo; ?api=http://host:8080 e ?device=codigo mudam o alvo. */
+   ?demo força o exemplo; ?api=http://host:8080 e ?device=codigo mudam o alvo.
+   Servida pelo backend, a API é a mesma origem; servida à parte na porta 5173 (python3 -m http.server), é a 8080 do mesmo host. */
 const QS = new URLSearchParams(location.search);
-const API = (QS.get('api') || (location.protocol.startsWith('http') ? `${location.protocol}//${location.hostname}:8080` : 'http://localhost:8080')).replace(/\/+$/, '');
+const API = (QS.get('api') || (location.port === '5173' ? `${location.protocol}//${location.hostname}:8080` : location.origin)).replace(/\/+$/, '');
 const DEVICE = QS.get('device') || 'esp32-jardim-bloco-a';
 const READ_EVERY_S = 30; /* intervalo de leitura do firmware */
 let booted = false;
