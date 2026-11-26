@@ -6,7 +6,7 @@ A página mostra os **dados reais do backend**: água estimada de cada planta, c
 
 ## Como abrir
 
-**Pelo backend (o jeito normal, e o da apresentação):** com o backend no ar, abra `http://localhost:8080/`. De outro aparelho na mesma rede (celular, notebook do professor), use `http://IP-da-máquina:8080/` (o IP sai em `hostname -I`). O backend copia esta pasta no build; depois de mudar a página, reinicie o backend.
+**Pelo backend (o jeito normal, e o da apresentação):** com o backend no ar, abra `http://localhost:8080/`. De outro aparelho na mesma rede (celular, notebook do professor), use `http://IP-da-máquina:8080/` (o IP sai em `hostname -I`). Para abrir pela internet, aponte o túnel para o backend: `cloudflared tunnel --url http://localhost:8080` (o endereço muda a cada vez que o túnel sobe, e quem tiver o link consegue usar a página e mandar comandos). O backend copia esta pasta no build; depois de mudar a página, reinicie o backend.
 
 **Para mexer na página** (sem reiniciar o backend a cada mudança):
 
@@ -25,6 +25,8 @@ Por padrão a página usa o backend do mesmo endereço (ou a porta 8080, quando 
 | `api` | `?api=http://192.168.0.10:8080` | backend em outro endereço (lembre de liberar a origem no CORS do backend) |
 | `device` | `?device=esp32-jardim-bloco-b` | outro sensor |
 | `demo` | `?demo` | força os dados de exemplo |
+
+**Tempo real com plano B:** as mudanças chegam na hora pelo SSE. Alguns caminhos seguram esse fluxo, como o túnel rápido do Cloudflare (`cloudflared tunnel --url`, endereço `trycloudflare.com`). Se o SSE não conectar em 8 s, a página busca os dados a cada 10 s e tenta o SSE de novo a cada 2 min. Uma irrigação automática percebida nessa busca aparece igual (chuva no vaso, aviso e LED).
 
 **Sem servidor:** se o backend não responder, a página mostra os dados de exemplo, escreve "dados de exemplo" no topo e continua tentando a cada 15 s. Quando o backend responde, ela passa para os dados reais sozinha. No modo de exemplo, registros e irrigações ficam só na página.
 

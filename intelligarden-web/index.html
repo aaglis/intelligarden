@@ -772,19 +772,27 @@ function dropPlant(p) {
   mkEls[p.id].remove();
 }
 
-let stream = null, streamRetry = null;
+/* Tempo real pelo SSE. Alguns caminhos seguram o fluxo (o túnel rápido do Cloudflare, por exemplo, entrega os cabeçalhos
+   e retém os eventos). Se o "connected" não chega em 8 s, a página passa a buscar os dados a cada 10 s e tenta o SSE de novo a cada 2 min. */
+const SSE_WAIT_MS = 8000, POLL_MS = 10000, SSE_RETRY_MS = 120000;
+let stream = null, streamRetry = null, streamWatch = null, pollTimer = null, pollRetry = null, polling = false;
 function connectStream() {
   clearTimeout(streamRetry);
+  clearTimeout(streamWatch);
   if (stream) stream.close();
-  stream = new EventSource(`${API}/api/events/readings?deviceCode=${encodeURIComponent(DEVICE)}`);
-  const on = (name, fn) => stream.addEventListener(name, (e) => {
+  const es = stream = new EventSource(`${API}/api/events/readings?deviceCode=${encodeURIComponent(DEVICE)}`);
+  streamWatch = setTimeout(() => { es.close(); startPolling(); }, SSE_WAIT_MS);
+  const on = (name, fn) => es.addEventListener(name, (e) => {
     let data;
     try { data = JSON.parse(e.data); } catch { return; }
     fn(data);
   });
-  stream.addEventListener('connected', () => {
+  es.addEventListener('connected', () => {
+    clearTimeout(streamWatch);
+    const wasPolling = !!pollTimer;
+    stopPolling();
     live.conn = true;
-    if (live.lost) { live.lost = false; resync(); }
+    if (live.lost || wasPolling) { live.lost = false; resync(); }
     renderSensor();
     refreshSensorSheet();
   });
@@ -792,14 +800,65 @@ function connectStream() {
   on('device-status', onDevice);
   on('plants-updated', (list) => list.forEach((d) => { const p = byId[d.code]; if (p && plants.includes(p)) applyApi(p, d); }));
   on('plant-irrigated', (d) => onIrrigated(d.plant, d.record));
-  stream.onerror = () => {
+  es.onerror = () => {
+    if (pollTimer) return; /* buscando a cada 10 s: o status vem da busca */
     live.conn = false;
     live.lost = true;
     renderSensor();
     refreshSensorSheet();
     /* o navegador reconecta sozinho; se ele desistir (resposta inválida), tenta de novo em 5 s */
-    if (stream.readyState === EventSource.CLOSED) streamRetry = setTimeout(connectStream, 5000);
+    if (es.readyState === EventSource.CLOSED) streamRetry = setTimeout(connectStream, 5000);
   };
+}
+function startPolling() {
+  if (!pollTimer) {
+    console.info('IntelliGarden: o tempo real (SSE) não chegou; buscando os dados a cada 10 s.');
+    pollTimer = setInterval(poll, POLL_MS);
+    poll();
+  }
+  clearTimeout(pollRetry);
+  pollRetry = setTimeout(connectStream, SSE_RETRY_MS);
+}
+function stopPolling() {
+  clearInterval(pollTimer);
+  clearTimeout(pollRetry);
+  pollTimer = pollRetry = null;
+}
+async function poll() {
+  if (polling) return;
+  polling = true;
+  try {
+    const data = await loadAll();
+    live.conn = true;
+    let reloadLog = false;
+    for (const d of data.list) {
+      const p = byId[d.code];
+      if (!p || !plants.includes(p) || !p.api) continue;
+      const prev = p.api;
+      if (d.lastWateredAt && d.lastWateredAt !== prev.lastWateredAt) await catchUpIrrigation(p, d, prev.lastWateredAt);
+      if (p.id === selectedId && (d.lastWateredAt !== prev.lastWateredAt || d.lastWeighedAt !== prev.lastWeighedAt)) reloadLog = true;
+    }
+    applyAll(data, true);
+    if (reloadLog) loadRecords(byId[selectedId]);
+  } catch {
+    live.conn = false;
+  } finally {
+    polling = false;
+    renderSensor();
+    refreshSensorSheet();
+  }
+}
+/* a água subiu sem passar pela página: procura a irrigação nova e mostra como se tivesse chegado pelo SSE */
+async function catchUpIrrigation(p, d, since) {
+  try {
+    const recs = await api(plantPath(p, '/records?limit=3'));
+    const after = since ? Date.parse(since) : 0;
+    for (const r of recs.slice().reverse()) {
+      if (r.type === 'irrigation' && Date.parse(r.recordedAt) > after) onIrrigated(d, r);
+    }
+  } catch {
+    /* fica para a próxima busca */
+  }
 }
 /* depois de uma queda do SSE, busca tudo de novo para não ficar com dado velho */
 async function resync() {
