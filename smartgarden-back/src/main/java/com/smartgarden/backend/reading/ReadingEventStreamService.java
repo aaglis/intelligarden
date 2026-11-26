@@ -80,6 +80,15 @@ public class ReadingEventStreamService {
         });
     }
 
+    /** Envia um evento para quem acompanha aquele dispositivo (ou todos os dispositivos). */
+    public void broadcast(String deviceCode, String eventName, Object data) {
+        clients.forEach((clientId, client) -> {
+            if (client.deviceCode() == null || client.deviceCode().equals(deviceCode)) {
+                send(clientId, client, SseEmitter.event().name(eventName).data(data));
+            }
+        });
+    }
+
     @Scheduled(fixedRateString = "${app.sse.heartbeat-interval-ms:15000}")
     public void sendHeartbeat() {
         String timestamp = OffsetDateTime.now().toString();

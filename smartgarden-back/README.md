@@ -142,7 +142,72 @@ Exemplo de body:
 
 `GET /api/events/readings`
 
-Use `deviceCode` para filtrar um dispositivo. O endpoint SSE envia os eventos `connected`, `reading-created`, `device-status` (dispositivo ficou online/offline) e `heartbeat`.
+Use `deviceCode` para filtrar um dispositivo. O endpoint SSE envia os eventos `connected`, `reading-created`, `device-status` (dispositivo ficou online/offline), `plants-updated` (água estimada mudou; lista das plantas afetadas), `plant-irrigated` (irrigação simulada disparada: `{plant, record}`) e `heartbeat`.
+
+## Plantas e água estimada
+
+Não há sensor de solo: cada planta tem uma "caixa d'água" **estimada**, que esvazia conforme o clima medido pelo sensor ligado a ela e enche com regas e irrigações.
+
+- **VPD** (déficit de pressão de vapor, kPa) mostra o quanto o ar está seco. Vem da temperatura e da umidade de cada leitura: `es = 0,6108 × exp(17,27 T / (T + 237,3))` (FAO-56, Allen et al., 1998, eq. 11) e `VPD = es × (1 − UR/100)`.
+- **Perda** a cada leitura: `k × VPD médio × horas desde a leitura anterior`, com `k` (mL por hora por kPa) próprio da planta e do vaso. A primeira leitura só ancora a estimativa; lacunas maiores que 12 h contam como 12 h.
+- **Limite**: quando a água estimada chega em `irrigationThresholdPercent`, a planta fica com `needsWater: true`.
+  - `autoIrrigation: true` (planta virtual): o backend registra uma irrigação simulada com `irrigationMl`, acende o LED do sensor (1 s a cada 10 mL, até 60 s) e avisa a interface. Intervalo mínimo de 30 min entre irrigações automáticas.
+  - `autoIrrigation: false` (vaso real): só sinaliza; a equipe rega e registra. Simular irrigação nesse vaso responde `409`.
+- **Pesagem**: compara a perda medida pela balança (1 g = 1 mL) com a estimada desde a pesagem anterior, se não houve rega entre elas. Com pelo menos 3 kPa·h de clima no intervalo, calcula o `k` que explicaria a perda medida. A planta guarda o `suggestedCoefficient` (mediana das últimas 10 pesagens) e o `meanErrorPercent`; para adotar, envie o novo `lossCoefficient` no `PATCH`.
+- **Vaso cheio**: uma pesagem com `fullPot: true` (logo depois de regar e escorrer) vira a referência. A partir daí, cada pesagem também corrige a água estimada para o valor medido.
+
+As 6 plantas do protótipo 3D já vêm cadastradas (migração `V6`), ligadas ao `esp32-jardim-bloco-a`. Os valores de `k` são estimativas iniciais (intervalo típico entre regas da espécie com VPD de 1,5 kPa) e precisam ser calibrados com as pesagens; as faixas de temperatura e umidade ainda precisam das fontes nas fichas das espécies.
+
+### Listar e consultar plantas
+
+`GET /api/plants` (opcional `?deviceCode=`) e `GET /api/plants/{code}`
+
+Cada planta traz `estimatedWaterMl`, `estimatedWaterPercent`, `lastVpdKpa`, `lossMlPerHour` (ritmo com o clima atual), `hoursToThreshold` (horas até o limite se o clima continuar igual), `needsWater` e os dados de pesagem e calibração.
+
+### Cadastrar e alterar planta
+
+`POST /api/plants` → `201`
+
+```json
+{
+  "code": "alecrim",
+  "name": "Alecrim",
+  "deviceCode": "esp32-jardim-bloco-a",
+  "waterCapacityMl": 250,
+  "irrigationThresholdPercent": 30,
+  "lossCoefficient": 2.0,
+  "autoIrrigation": true,
+  "initialWaterPercent": 100
+}
+```
+
+`irrigationMl` é opcional (padrão: o que leva do limite ao vaso cheio). `PATCH /api/plants/{code}` altera só os campos enviados; mudar `waterCapacityMl` mantém a porcentagem de água.
+
+### Registro diário
+
+`POST /api/plants/{code}/records` → `201`
+
+```json
+{ "type": "weighing", "weightGrams": 860, "fullPot": false }
+```
+
+```json
+{ "type": "watering", "waterMl": 180, "drained": true }
+```
+
+```json
+{ "type": "observation", "note": "Folhas de baixo amareladas" }
+```
+
+A resposta da pesagem traz `estimatedLossMl`, `measuredLossMl`, `measuredCoefficient` e, se houver peso de vaso cheio, `measuredWaterPercent`. Rega com `drained: true` deixa o vaso cheio na estimativa.
+
+`GET /api/plants/{code}/records?limit=20` lista pesagens, regas, irrigações e observações, da mais nova para a mais antiga.
+
+### Simular irrigação
+
+`POST /api/plants/{code}/irrigations` → `201`
+
+Coloca `irrigationMl` na água estimada, registra a irrigação e acende o LED do sensor. Recusado com `409` para vasos reais.
 
 ## Contrato MQTT
 
