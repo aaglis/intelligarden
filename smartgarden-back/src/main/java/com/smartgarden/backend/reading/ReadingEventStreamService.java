@@ -1,5 +1,7 @@
 package com.smartgarden.backend.reading;
 
+import com.smartgarden.backend.device.DeviceStatusChangedEvent;
+import com.smartgarden.backend.device.dto.DeviceResponse;
 import com.smartgarden.backend.reading.dto.ReadingResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -65,6 +67,19 @@ public class ReadingEventStreamService {
         });
     }
 
+    /** Avisa a interface quando o sensor fica online ou offline (evento "device-status"). */
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT, fallbackExecution = true)
+    public void onDeviceStatusChanged(DeviceStatusChangedEvent event) {
+        DeviceResponse device = event.device();
+        clients.forEach((clientId, client) -> {
+            if (client.deviceCode() == null || client.deviceCode().equals(device.deviceCode())) {
+                send(clientId, client, SseEmitter.event()
+                        .name("device-status")
+                        .data(device));
+            }
+        });
+    }
+
     @Scheduled(fixedRateString = "${app.sse.heartbeat-interval-ms:15000}")
     public void sendHeartbeat() {
         String timestamp = OffsetDateTime.now().toString();
@@ -80,8 +95,13 @@ public class ReadingEventStreamService {
             client.emitter().send(event);
         } catch (IOException | IllegalStateException exception) {
             clients.remove(clientId);
-            client.emitter().complete();
             LOGGER.debug("Cliente SSE removido apos falha de envio", exception);
+            try {
+                client.emitter().complete();
+            } catch (IllegalStateException alreadyClosed) {
+                // O navegador já fechou a conexão e o container encerrou o AsyncContext; não há o que completar.
+                LOGGER.debug("Conexao SSE ja encerrada pelo container", alreadyClosed);
+            }
         }
     }
 

@@ -24,7 +24,8 @@ Cada pasta tem seu próprio README com instruções detalhadas.
 
 ```bash
 # 1. Infra (PostgreSQL + MQTT)
-cd smartgarden-infra && cp .env.example .env && docker compose up -d && cd ..
+cd smartgarden-infra && cp .env.example .env   # troque cada troque_esta_senha (openssl rand -hex 16)
+docker compose up -d && cd ..
 
 # 2. Backend (porta 8080)
 cd smartgarden-back && mvn spring-boot:run
@@ -37,4 +38,4 @@ Para gravar o ESP32, crie `smartgarden-firmware/esp32-dht22-serial/secrets.h` a 
 
 ## Segredos
 
-Não são versionados: `smartgarden-infra/.env` e `smartgarden-firmware/esp32-dht22-serial/secrets.h`. Os valores em `.env.example` e os padrões do `application.yml` são credenciais **apenas de desenvolvimento local**.
+Não são versionados: `smartgarden-infra/.env` (senhas do banco e do broker, lidas pelo Compose e pelo backend) e `smartgarden-firmware/esp32-dht22-serial/secrets.h` (Wi-Fi e senha MQTT do ESP32). O `.env.example` e o `secrets.example.h` só têm marcadores.

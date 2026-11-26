@@ -21,7 +21,15 @@ public record DeviceResponse(
         @Schema(example = "2026-05-21T12:16:53Z")
         OffsetDateTime updatedAt,
         @Schema(example = "2026-05-21T12:16:53Z")
-        OffsetDateTime lastSeenAt
+        OffsetDateTime lastSeenAt,
+        @Schema(description = "Conectado ao broker MQTT agora (informado pelo próprio dispositivo)", example = "true")
+        boolean online,
+        @Schema(description = "Quando o estado online/offline mudou pela última vez", example = "2026-05-21T12:16:53Z")
+        OffsetDateTime statusChangedAt,
+        @Schema(example = "10.50.22.73")
+        String ipAddress,
+        @Schema(example = "1.1.0")
+        String firmwareVersion
 ) {
 
     public static DeviceResponse fromEntity(Device device) {
@@ -33,7 +41,11 @@ public record DeviceResponse(
                 device.isActive(),
                 device.getCreatedAt(),
                 device.getUpdatedAt(),
-                device.getLastSeenAt()
+                device.getLastSeenAt(),
+                device.isOnline(),
+                device.getStatusChangedAt(),
+                device.getIpAddress(),
+                device.getFirmwareVersion()
         );
     }
 }

@@ -2,6 +2,8 @@ package com.smartgarden.backend.device;
 
 import com.smartgarden.backend.common.ApiErrorResponse;
 import com.smartgarden.backend.device.dto.CreateDeviceRequest;
+import com.smartgarden.backend.device.dto.DeviceCommandRequest;
+import com.smartgarden.backend.device.dto.DeviceCommandResponse;
 import com.smartgarden.backend.device.dto.DeviceResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -11,6 +13,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -25,9 +28,11 @@ import java.util.List;
 public class DeviceController {
 
     private final DeviceService deviceService;
+    private final DeviceCommandService deviceCommandService;
 
-    public DeviceController(DeviceService deviceService) {
+    public DeviceController(DeviceService deviceService, DeviceCommandService deviceCommandService) {
         this.deviceService = deviceService;
+        this.deviceCommandService = deviceCommandService;
     }
 
     @GetMapping
@@ -47,5 +52,37 @@ public class DeviceController {
     )
     public DeviceResponse createDevice(@Valid @RequestBody CreateDeviceRequest request) {
         return deviceService.createDevice(request);
+    }
+
+    @GetMapping("/{deviceCode}")
+    @Operation(summary = "Consultar dispositivo", description = "Retorna o dispositivo, incluindo se está online agora.")
+    @ApiResponse(responseCode = "200", description = "Dispositivo encontrado")
+    @ApiResponse(
+            responseCode = "404",
+            description = "Dispositivo nao encontrado",
+            content = @Content(schema = @Schema(implementation = ApiErrorResponse.class))
+    )
+    public DeviceResponse getDevice(@PathVariable String deviceCode) {
+        return deviceService.getDevice(deviceCode);
+    }
+
+    @PostMapping("/{deviceCode}/commands")
+    @ResponseStatus(HttpStatus.ACCEPTED)
+    @Operation(
+            summary = "Enviar comando ao dispositivo",
+            description = "Publica o comando via MQTT. identify pisca o LED; irrigation acende o LED (irrigação simulada). "
+                    + "Se o dispositivo estiver offline, o comando é descartado (deviceOnline=false na resposta)."
+    )
+    @ApiResponse(responseCode = "202", description = "Comando enviado ao broker")
+    @ApiResponse(
+            responseCode = "404",
+            description = "Dispositivo nao encontrado",
+            content = @Content(schema = @Schema(implementation = ApiErrorResponse.class))
+    )
+    public DeviceCommandResponse sendCommand(
+            @PathVariable String deviceCode,
+            @Valid @RequestBody DeviceCommandRequest request
+    ) {
+        return deviceCommandService.send(deviceCode, request);
     }
 }

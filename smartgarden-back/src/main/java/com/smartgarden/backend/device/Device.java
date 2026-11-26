@@ -40,6 +40,50 @@ public class Device {
     @Column(name = "last_seen_at")
     private OffsetDateTime lastSeenAt;
 
+    @Column(nullable = false)
+    private boolean online;
+
+    @Column(name = "status_changed_at")
+    private OffsetDateTime statusChangedAt;
+
+    @Column(name = "ip_address", length = 45)
+    private String ipAddress;
+
+    @Column(name = "firmware_version", length = 30)
+    private String firmwareVersion;
+
+    public boolean isOnline() {
+        return online;
+    }
+
+    public void setOnline(boolean online) {
+        this.online = online;
+    }
+
+    public OffsetDateTime getStatusChangedAt() {
+        return statusChangedAt;
+    }
+
+    public void setStatusChangedAt(OffsetDateTime statusChangedAt) {
+        this.statusChangedAt = statusChangedAt;
+    }
+
+    public String getIpAddress() {
+        return ipAddress;
+    }
+
+    public void setIpAddress(String ipAddress) {
+        this.ipAddress = ipAddress;
+    }
+
+    public String getFirmwareVersion() {
+        return firmwareVersion;
+    }
+
+    public void setFirmwareVersion(String firmwareVersion) {
+        this.firmwareVersion = firmwareVersion;
+    }
+
     public Long getId() {
         return id;
     }

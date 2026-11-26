@@ -13,5 +13,6 @@ const char* WIFI_PASSWORD = "SUA_SENHA";
 // Não use localhost: para o ESP32, localhost é ele mesmo.
 const char* MQTT_HOST = "192.168.0.10";
 const uint16_t MQTT_PORT = 1883;
-const char* MQTT_USER = "smartgarden";
-const char* MQTT_PASSWORD = "SUA_SENHA_MQTT";  // o mesmo MQTT_PASSWORD do smartgarden-infra/.env
+// Cada ESP32 tem usuário próprio no broker, igual ao DEVICE_CODE do firmware.
+const char* MQTT_USER = "esp32-jardim-bloco-a";
+const char* MQTT_PASSWORD = "SUA_SENHA_MQTT";  // MQTT_DEVICE_PASSWORD do smartgarden-infra/.env

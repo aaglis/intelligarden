@@ -1,10 +1,16 @@
 spring:
   application:
     name: smartgarden-back
+  # As senhas não ficam no repositório: vêm de variáveis de ambiente ou do .env do smartgarden-infra
+  # (o mesmo arquivo que o Docker Compose usa). O caminho funciona rodando de smartgarden-back ou da raiz.
+  config:
+    import:
+      - optional:file:../smartgarden-infra/.env[.properties]
+      - optional:file:./smartgarden-infra/.env[.properties]
   datasource:
-    url: ${SMARTGARDEN_DB_URL:jdbc:postgresql://localhost:5432/smartgarden}
-    username: ${SMARTGARDEN_DB_USERNAME:smartgarden}
-    password: ${SMARTGARDEN_DB_PASSWORD:smartgarden}
+    url: ${SMARTGARDEN_DB_URL:jdbc:postgresql://localhost:${POSTGRES_PORT:5432}/${POSTGRES_DB:smartgarden}}
+    username: ${SMARTGARDEN_DB_USERNAME:${POSTGRES_USER:smartgarden}}
+    password: ${SMARTGARDEN_DB_PASSWORD:${POSTGRES_PASSWORD}}
   flyway:
     enabled: true
     baseline-on-migrate: true
@@ -34,8 +40,9 @@ app:
     enabled: ${SMARTGARDEN_MQTT_ENABLED:true}
     broker-url: ${SMARTGARDEN_MQTT_BROKER_URL:tcp://localhost:1883}
     username: ${SMARTGARDEN_MQTT_USERNAME:smartgarden}
-    password: ${SMARTGARDEN_MQTT_PASSWORD:smartgarden_mqtt}
+    password: ${SMARTGARDEN_MQTT_PASSWORD:${MQTT_PASSWORD}}
     client-id: ${SMARTGARDEN_MQTT_CLIENT_ID:smartgarden-back}
     telemetry-topic: ${SMARTGARDEN_MQTT_TELEMETRY_TOPIC:smartgarden/devices/+/telemetry}
+    status-topic: ${SMARTGARDEN_MQTT_STATUS_TOPIC:smartgarden/devices/+/status}
   sse:
     heartbeat-interval-ms: ${SMARTGARDEN_SSE_HEARTBEAT_INTERVAL_MS:15000}

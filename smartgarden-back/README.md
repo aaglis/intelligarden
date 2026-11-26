@@ -32,16 +32,9 @@ cp .env.example .env
 docker compose up -d
 ```
 
-Isso cria o PostgreSQL e o broker MQTT. Credenciais locais:
+Isso cria o PostgreSQL (`localhost:5432`, banco e usuário `smartgarden`) e o broker MQTT (`localhost:1883`, usuário `smartgarden`). As senhas ficam só no `smartgarden-infra/.env`, que não vai para o Git.
 
-- banco: `smartgarden`
-- usuário: `smartgarden`
-- senha: `smartgarden`
-- MQTT host/porta: `localhost:1883`
-- MQTT usuário: `smartgarden`
-- MQTT senha: `smartgarden_mqtt`
-
-As credenciais são exclusivas para desenvolvimento local. O broker aceita o tópico `smartgarden/devices/+/telemetry`. Consulte o README do repositório de infraestrutura para configuração e migração dos volumes.
+O backend lê esse mesmo `.env` ao iniciar (`spring.config.import` no `application.yml`), então não é preciso exportar nada. O usuário do backend lê `telemetry` e `status` de todos os dispositivos e publica em `commands`; cada ESP32 tem usuário próprio. Consulte o README do `smartgarden-infra` para configuração e migração dos volumes.
 
 ## Migrações de banco
 
@@ -58,17 +51,19 @@ Em banco vazio, o Flyway cria toda a estrutura. Em banco já existente, a opçã
 mvn spring-boot:run
 ```
 
-Se quiser sobrescrever a conexão:
+As senhas vêm do `smartgarden-infra/.env`. Variáveis de ambiente têm prioridade, se quiser sobrescrever:
 
 ```bash
 export SMARTGARDEN_DB_URL=jdbc:postgresql://localhost:5432/smartgarden
 export SMARTGARDEN_DB_USERNAME=smartgarden
-export SMARTGARDEN_DB_PASSWORD=smartgarden
+export SMARTGARDEN_DB_PASSWORD=sua_senha_do_postgres
 export SMARTGARDEN_MQTT_BROKER_URL=tcp://localhost:1883
 export SMARTGARDEN_MQTT_USERNAME=smartgarden
-export SMARTGARDEN_MQTT_PASSWORD=smartgarden_mqtt
+export SMARTGARDEN_MQTT_PASSWORD=sua_senha_do_mqtt
 mvn spring-boot:run
 ```
+
+Sem o `.env` e sem as variáveis, a aplicação não sobe e acusa `Could not resolve placeholder 'POSTGRES_PASSWORD'` (ou `MQTT_PASSWORD`).
 
 ## Swagger / OpenAPI
 
@@ -102,6 +97,29 @@ Exemplo de body:
 
 `GET /api/devices`
 
+### Consultar dispositivo
+
+`GET /api/devices/{deviceCode}`
+
+Além do cadastro, traz `online`, `statusChangedAt`, `ipAddress` e `firmwareVersion`, informados pelo próprio ESP32 via MQTT (veja "Status do dispositivo" abaixo).
+
+### Enviar comando ao dispositivo
+
+`POST /api/devices/{deviceCode}/commands` → `202 Accepted`
+
+```json
+{ "command": "identify" }
+```
+
+```json
+{ "command": "irrigation", "durationSeconds": 10 }
+```
+
+- `identify`: pisca o LED da placa (para achar o sensor).
+- `irrigation`: irrigação simulada; o LED fica aceso por `durationSeconds` (1 a 60, padrão 10).
+
+O comando é publicado em `smartgarden/devices/{deviceCode}/commands` (QoS 1). Se o dispositivo estiver offline, o broker descarta o comando, e a resposta traz `deviceOnline: false`. Sem MQTT habilitado, responde `503`.
+
 ### Registrar leitura
 
 `POST /api/readings`
@@ -124,7 +142,7 @@ Exemplo de body:
 
 `GET /api/events/readings`
 
-Use `deviceCode` para filtrar um dispositivo. O endpoint SSE envia os eventos `connected`, `reading-created` e `heartbeat`.
+Use `deviceCode` para filtrar um dispositivo. O endpoint SSE envia os eventos `connected`, `reading-created`, `device-status` (dispositivo ficou online/offline) e `heartbeat`.
 
 ## Contrato MQTT
 
@@ -140,6 +158,24 @@ Tópico: `smartgarden/devices/{deviceCode}/telemetry`
 ```
 
 O backend extrai `deviceCode` do tópico. `messageId` é obrigatório no MQTT e impede duplicação causada por retransmissões QoS 1. Se `recordedAt` for nulo, é usado o horário do backend.
+
+### Status do dispositivo
+
+Tópico: `smartgarden/devices/{deviceCode}/status` (mensagem retida)
+
+```json
+{ "state": "online", "ip": "10.50.22.73", "firmware": "1.1.0" }
+```
+
+O ESP32 publica `online` ao conectar e registra `{"state":"offline"}` como *last will*: se ele sumir sem se despedir (queda de energia, Wi-Fi), o broker publica o `offline` sozinho depois de até 45 s (1,5 × keep-alive de 30 s). O backend atualiza o dispositivo e emite o evento SSE `device-status` só quando o estado muda.
+
+### Comandos
+
+Tópico: `smartgarden/devices/{deviceCode}/commands`
+
+```json
+{ "commandId": "6f1c…", "command": "irrigation", "durationSeconds": 10, "issuedAt": "2026-11-26T01:26:28Z" }
+```
 
 ### Listar leituras
 

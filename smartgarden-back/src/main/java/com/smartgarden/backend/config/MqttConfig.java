@@ -7,10 +7,11 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.integration.channel.DirectChannel;
 import org.springframework.integration.core.MessageProducer;
-import org.springframework.integration.mqtt.inbound.MqttPahoMessageDrivenChannelAdapter;
-import org.springframework.integration.mqtt.support.DefaultPahoMessageConverter;
 import org.springframework.integration.mqtt.core.DefaultMqttPahoClientFactory;
 import org.springframework.integration.mqtt.core.MqttPahoClientFactory;
+import org.springframework.integration.mqtt.inbound.MqttPahoMessageDrivenChannelAdapter;
+import org.springframework.integration.mqtt.outbound.MqttPahoMessageHandler;
+import org.springframework.integration.mqtt.support.DefaultPahoMessageConverter;
 import org.springframework.messaging.MessageChannel;
 
 @Configuration
@@ -42,22 +43,39 @@ public class MqttConfig {
         return new DirectChannel();
     }
 
+    /** Assina telemetria e status de todos os dispositivos; o MqttInboundDispatcher separa por tópico. */
     @Bean
     public MessageProducer mqttInbound(
             MqttPahoClientFactory mqttClientFactory,
             MessageChannel mqttInputChannel,
             @Value("${app.mqtt.client-id}") String clientId,
-            @Value("${app.mqtt.telemetry-topic}") String telemetryTopic
+            @Value("${app.mqtt.telemetry-topic}") String telemetryTopic,
+            @Value("${app.mqtt.status-topic}") String statusTopic
     ) {
         MqttPahoMessageDrivenChannelAdapter adapter = new MqttPahoMessageDrivenChannelAdapter(
                 clientId,
                 mqttClientFactory,
-                telemetryTopic
+                telemetryTopic,
+                statusTopic
         );
-        adapter.setQos(1);
+        adapter.setQos(1, 1);
         adapter.setCompletionTimeout(5_000);
         adapter.setConverter(new DefaultPahoMessageConverter());
         adapter.setOutputChannel(mqttInputChannel);
         return adapter;
+    }
+
+    /** Cliente separado (outro client id) só para publicar comandos para os dispositivos. */
+    @Bean
+    public MqttPahoMessageHandler mqttOutbound(
+            MqttPahoClientFactory mqttClientFactory,
+            @Value("${app.mqtt.client-id}") String clientId
+    ) {
+        MqttPahoMessageHandler handler = new MqttPahoMessageHandler(clientId + "-out", mqttClientFactory);
+        handler.setAsync(true);
+        handler.setDefaultQos(1);
+        handler.setDefaultRetained(false);
+        handler.setCompletionTimeout(5_000);
+        return handler;
     }
 }

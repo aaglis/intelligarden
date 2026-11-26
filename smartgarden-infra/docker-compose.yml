@@ -8,7 +8,7 @@ services:
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-smartgarden}
       POSTGRES_USER: ${POSTGRES_USER:-smartgarden}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-smartgarden}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD no .env}
     ports:
       - "${POSTGRES_PORT:-5432}:5432"
     volumes:
@@ -24,14 +24,29 @@ services:
     restart: "no"
     user: "0:0"
     environment:
-      MQTT_PASSWORD: ${MQTT_PASSWORD:-smartgarden_mqtt}
+      MQTT_PASSWORD: ${MQTT_PASSWORD:?defina MQTT_PASSWORD no .env}
+      # Cada ESP32 entra com o próprio usuário (igual ao código do dispositivo) e só acessa os tópicos dele.
+      MQTT_DEVICE_USER: ${MQTT_DEVICE_USER:-esp32-jardim-bloco-a}
+      MQTT_DEVICE_PASSWORD: ${MQTT_DEVICE_PASSWORD:?defina MQTT_DEVICE_PASSWORD no .env}
     entrypoint: ["/bin/sh", "-ec"]
     command:
       - |
         umask 0077
         rm -f /mosquitto/auth/passwords
         mosquitto_passwd -b -c /mosquitto/auth/passwords smartgarden "$$MQTT_PASSWORD"
-        printf 'user smartgarden\ntopic readwrite smartgarden/devices/+/telemetry\n' > /mosquitto/auth/acl
+        mosquitto_passwd -b /mosquitto/auth/passwords "$$MQTT_DEVICE_USER" "$$MQTT_DEVICE_PASSWORD"
+        # backend: lê telemetria e status de todos os dispositivos e envia comandos
+        # dispositivo (%u = usuário): publica a própria telemetria e status e recebe os próprios comandos
+        printf '%s\n' \
+          'user smartgarden' \
+          'topic read smartgarden/devices/+/telemetry' \
+          'topic read smartgarden/devices/+/status' \
+          'topic write smartgarden/devices/+/commands' \
+          '' \
+          'pattern write smartgarden/devices/%u/telemetry' \
+          'pattern write smartgarden/devices/%u/status' \
+          'pattern read smartgarden/devices/%u/commands' \
+          > /mosquitto/auth/acl
         chown mosquitto:mosquitto /mosquitto/auth/passwords
         chown mosquitto:mosquitto /mosquitto/auth/acl
         chmod 0700 /mosquitto/auth/passwords

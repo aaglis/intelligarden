@@ -19,14 +19,17 @@ docker compose up -d
 docker compose ps
 ```
 
-O Compose gera a credencial em um volume Docker privado antes de iniciar o Mosquitto. Apenas o arquivo `.env` com a senha em texto claro é ignorado pelo Git.
+Antes do `up`, troque no `.env` cada `troque_esta_senha` por uma senha gerada com `openssl rand -hex 16`. O Compose se recusa a subir sem `POSTGRES_PASSWORD`, `MQTT_PASSWORD` e `MQTT_DEVICE_PASSWORD`.
 
-Credenciais padrão de desenvolvimento:
+O Compose gera as credenciais do broker em um volume Docker privado antes de iniciar o Mosquitto. O `.env`, com as senhas em texto claro, é ignorado pelo Git.
 
-```text
-PostgreSQL: smartgarden / smartgarden
-MQTT: smartgarden / smartgarden_mqtt
+O PostgreSQL só usa `POSTGRES_PASSWORD` ao criar o banco pela primeira vez. Para trocar a senha de um banco que já existe:
+
+```bash
+docker exec -it smartgarden-postgres psql -U smartgarden -d smartgarden -c "\password smartgarden"
 ```
+
+e atualize o `.env` com a mesma senha.
 
 ## Migração do Compose antigo
 
@@ -67,13 +70,18 @@ Esse comando é destrutivo e remove o banco PostgreSQL e a persistência do brok
 
 ## Configuração MQTT
 
-O usuário `smartgarden` pode publicar e assinar somente:
+Há dois tipos de usuário, criados pelo serviço `mosquitto-auth` a partir do `.env`:
 
-```text
-smartgarden/devices/+/telemetry
-```
+| Usuário | Senha (`.env`) | Pode |
+|---|---|---|
+| `smartgarden` (backend) | `MQTT_PASSWORD` | ler `smartgarden/devices/+/telemetry` e `+/status`; publicar em `+/commands` |
+| `MQTT_DEVICE_USER` (ESP32, igual ao código do dispositivo) | `MQTT_DEVICE_PASSWORD` | publicar só a própria `telemetry` e `status`; ler só os próprios `commands` |
 
-Depois de alterar `MQTT_PASSWORD` no `.env`, recrie o inicializador e o broker:
+As regras do dispositivo usam `pattern ... %u`, ou seja, o nome do usuário entra no tópico: um ESP32 não consegue publicar como se fosse outro. A senha do dispositivo vai também no `secrets.h` do firmware. Gere uma com `openssl rand -hex 16`.
+
+O broker guarda as leituras (`queue_qos0_messages`) enquanto o backend está reiniciando, porque o backend usa sessão persistente; quando ele volta, recebe o que chegou nesse meio-tempo.
+
+Depois de alterar senhas ou usuários no `.env`, recrie o inicializador e o broker:
 
 ```bash
 docker compose up -d --force-recreate mosquitto-auth mosquitto
@@ -87,18 +95,4 @@ sudo systemctl disable --now mosquitto
 
 ## Integração com o backend
 
-Os valores padrão do `smartgarden-back` já apontam para esta infraestrutura:
-
-```text
-PostgreSQL: jdbc:postgresql://localhost:5432/smartgarden
-MQTT: tcp://localhost:1883
-```
-
-Se as credenciais forem alteradas, configure no processo do backend:
-
-```bash
-export SMARTGARDEN_DB_USERNAME=smartgarden
-export SMARTGARDEN_DB_PASSWORD=senha_do_postgres
-export SMARTGARDEN_MQTT_USERNAME=smartgarden
-export SMARTGARDEN_MQTT_PASSWORD=senha_do_mqtt
-```
+O `smartgarden-back` aponta para esta infraestrutura (`localhost:5432` e `tcp://localhost:1883`) e lê as senhas deste mesmo `.env` ao iniciar. Variáveis `SMARTGARDEN_*` no processo do backend têm prioridade, se precisar sobrescrever.
