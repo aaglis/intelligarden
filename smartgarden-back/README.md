@@ -6,7 +6,7 @@ Backend do SmartGarden usando `Java 21`, `Spring Boot`, `PostgreSQL`, MQTT, REST
 
 `ESP32 -> MQTT -> Mosquitto -> Spring Boot -> PostgreSQL`
 
-O ESP32 publica telemetria com QoS 1. O backend consome, valida, persiste e notifica o Angular por SSE. REST continua disponível para consultas, relatórios e ingestão compatível.
+O ESP32 publica telemetria com QoS 1. O backend consome, valida, persiste e notifica a interface 3D por SSE. REST continua disponível para consultas, relatórios e ingestão compatível.
 
 ## Stack
 
@@ -67,7 +67,7 @@ Sem o `.env` e sem as variáveis, a aplicação não sobe e acusa `Could not res
 
 **Interface 3D:** o backend também serve a página do `intelligarden-web` em `http://localhost:8080/` (ou `http://IP-da-máquina:8080/` de outro aparelho da mesma rede). No build, o Maven copia `../intelligarden-web/index.html` e `vendor/` para `static/`; depois de mudar a página, reinicie o backend para ela ser copiada de novo. A página vai com `Cache-Control: no-cache`, para o navegador não ficar com uma versão antiga.
 
-CORS: só importa quando a página está em outro endereço. Por padrão aceita o Angular (`http://localhost:4200`) e o 3D servido à parte (`http://localhost:5173`). Para outras origens, defina `SMARTGARDEN_CORS_ALLOWED_ORIGINS` com as origens separadas por vírgula.
+CORS: só importa quando a página está em outro endereço. Por padrão aceita o 3D servido à parte para desenvolvimento (`http://localhost:5173`). Para outras origens, defina `SMARTGARDEN_CORS_ALLOWED_ORIGINS` com as origens separadas por vírgula.
 
 ## Swagger / OpenAPI
 

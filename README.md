@@ -1,11 +1,11 @@
 # SmartGarden
 
-Jardim virtual com ESP32 e sensor DHT22: o dispositivo mede temperatura e umidade do ar; o backend guarda as leituras, estima a água no vaso de cada planta pelo clima (VPD × k, calibrado com pesagens) e dispara a irrigação simulada (LED do ESP32) quando uma planta chega no limite. A interface 3D (`intelligarden-web`) mostra o jardim com esses dados em tempo real; o frontend Angular traz o monitoramento e os relatórios.
+Jardim virtual com ESP32 e sensor DHT22: o dispositivo mede temperatura e umidade do ar; o backend guarda as leituras, estima a água no vaso de cada planta pelo clima (VPD × k, calibrado com pesagens) e dispara a irrigação simulada (LED do ESP32) quando uma planta chega no limite. A interface 3D (`intelligarden-web`), servida pelo próprio backend, mostra o jardim com esses dados em tempo real, os gráficos de histórico e o registro diário.
 
 ```
 ESP32 + DHT22 ──MQTT──▶ Mosquitto ──▶ Spring Boot ──▶ PostgreSQL
                                            │
-                                           └──REST/SSE──▶ Angular e interface 3D
+                                           └──REST/SSE──▶ interface 3D (servida pelo backend)
 ```
 
 ## Estrutura
@@ -14,9 +14,8 @@ ESP32 + DHT22 ──MQTT──▶ Mosquitto ──▶ Spring Boot ──▶ Post
 |---|---|
 | [`smartgarden-firmware`](smartgarden-firmware) | Firmware do ESP32 (Arduino) |
 | [`smartgarden-back`](smartgarden-back) | Backend Java 21 / Spring Boot (REST, MQTT, SSE, água estimada das plantas) |
-| [`smartgarden-front`](smartgarden-front) | Frontend Angular 19 |
 | [`smartgarden-infra`](smartgarden-infra) | PostgreSQL e Mosquitto via Docker Compose |
-| [`intelligarden-web`](intelligarden-web) | Nova interface 3D (IntelliGarden), servida pelo backend em `/` |
+| [`intelligarden-web`](intelligarden-web) | Interface 3D (IntelliGarden), servida pelo backend em `/` |
 
 Cada pasta tem seu próprio README com instruções detalhadas.
 
@@ -29,9 +28,6 @@ docker compose up -d && cd ..
 
 # 2. Backend (porta 8080) — também serve a interface 3D em http://localhost:8080/
 cd smartgarden-back && mvn spring-boot:run
-
-# 3. Frontend (porta 4200, com proxy de /api para o backend)
-cd smartgarden-front && pnpm install && pnpm start
 ```
 
 A interface 3D não precisa de um passo próprio: abra `http://localhost:8080/`, ou `http://IP-da-máquina:8080/` de outro aparelho da rede. Ela funciona sem internet. Para mexer na página sem reiniciar o backend, veja o README do `intelligarden-web`.
