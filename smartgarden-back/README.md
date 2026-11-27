@@ -142,6 +142,8 @@ Exemplo de body:
 
 `messageId` é opcional no REST. Quando informado, torna a operação idempotente. Se o dispositivo ainda não existir, ele é criado automaticamente com nome padrão.
 
+Leitura com salto implausível é recusada (`400` no REST; pelo MQTT, descartada com aviso no log): mais de 5 °C ou 20 pontos de umidade de diferença para a leitura anterior do mesmo dispositivo, se ela tiver menos de 2 minutos. Isso barra a falha do DHT22 que entrega temperatura e umidade pela metade numa leitura isolada. Se o ambiente mudar de verdade, a leitura volta a ser aceita depois de 2 minutos.
+
 ### Acompanhar leituras em tempo real
 
 `GET /api/events/readings`
@@ -306,7 +308,7 @@ Parâmetros:
 - `startAt`
 - `endAt`
 
-Esse endpoint retorna a série histórica já ordenada por `recordedAt`, pronta para alimentar o gráfico do dashboard.
+Esse endpoint retorna a série histórica já ordenada por `recordedAt`, pronta para alimentar um gráfico. Quando há mais leituras que `limit`, o período é dividido em `limit` faixas de tempo iguais e volta a última leitura de cada faixa: os pontos cobrem a janela inteira (com `hours=24&limit=288`, um ponto a cada 5 minutos). Faixa sem leitura fica vazia, então um período com o sensor desligado aparece como buraco.
 
 ### Resumo para dashboard
 
