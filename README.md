@@ -38,6 +38,8 @@ Para gravar o ESP32, crie `smartgarden-firmware/esp32-dht22-serial/secrets.h` a 
 
 Manjericão, lírio-da-paz e jiboia são vasos reais: a equipe rega de verdade e pesa todo dia, e as pesagens conferem e calibram a água estimada. Passo a passo em [`docs/pesagem-diaria.md`](docs/pesagem-diaria.md).
 
+De onde vem cada número das plantas (faixas de temperatura e umidade, rega, base do modelo de água), com as fontes: [`docs/fichas-das-plantas.md`](docs/fichas-das-plantas.md).
+
 ## Segredos
 
 Não são versionados: `smartgarden-infra/.env` (senhas do banco e do broker, lidas pelo Compose e pelo backend) e `smartgarden-firmware/esp32-dht22-serial/secrets.h` (Wi-Fi e senha MQTT do ESP32). O `.env.example` e o `secrets.example.h` só têm marcadores.
