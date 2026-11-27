@@ -66,7 +66,54 @@ Para apagar todos os dados locais:
 docker compose down -v
 ```
 
-Esse comando é destrutivo e remove o banco PostgreSQL e a persistência do broker.
+Esse comando é destrutivo e remove o banco PostgreSQL e a persistência do broker. Faça uma cópia antes (veja abaixo).
+
+## Cópia de segurança do banco
+
+As pesagens dos vasos reais são o resultado do projeto e existem só neste banco. O script `backup.sh` faz uma cópia compactada (`pg_dump`, formato custom), confere se o próprio PostgreSQL consegue ler o arquivo e mantém as 30 cópias mais recentes em `~/intelligarden-backups`, fora do repositório. A cópia roda dentro do container, com o usuário e o banco dele, então nenhuma senha passa pelo host.
+
+```bash
+# uma cópia agora
+./backup.sh
+
+# agendar uma cópia por dia, às 3h (timer do systemd do usuário, sem sudo)
+./backup.sh instalar
+
+# ver as execuções e o próximo horário
+journalctl --user -u intelligarden-backup.service -n 20 --no-pager
+systemctl --user list-timers intelligarden-backup.timer
+```
+
+Variáveis opcionais: `BACKUP_DIR` (pasta das cópias), `BACKUP_KEEP` (quantas manter) e `PG_CONTAINER` (nome do container).
+
+O timer do usuário roda enquanto você estiver com a sessão aberta. Se o computador estiver desligado às 3h, a cópia roda assim que ele voltar (`Persistent=true`). Para rodar mesmo sem ninguém logado, habilite com `loginctl enable-linger`.
+
+Uma cópia no mesmo disco não protege contra a perda do computador. De vez em quando, copie a pasta `~/intelligarden-backups` para um pendrive ou para a nuvem.
+
+### Restaurar uma cópia
+
+A restauração substitui os dados atuais pelos da cópia.
+
+```bash
+# 1. pare o backend, para nada gravar durante a restauração
+
+# 2. restaure (troque o nome do arquivo)
+docker exec -i smartgarden-postgres sh -c 'pg_restore -U "$POSTGRES_USER" -d "$POSTGRES_DB" --clean --if-exists --no-owner' \
+  < ~/intelligarden-backups/smartgarden-AAAA-MM-DD_HHMMSS.dump
+
+# 3. suba o backend de novo
+```
+
+Para só conferir uma cópia, sem tocar no banco real, restaure num banco temporário:
+
+```bash
+docker exec smartgarden-postgres sh -c 'createdb -U "$POSTGRES_USER" restore_teste'
+docker exec -i smartgarden-postgres sh -c 'pg_restore -U "$POSTGRES_USER" -d restore_teste --no-owner' < ~/intelligarden-backups/ARQUIVO.dump
+docker exec smartgarden-postgres sh -c 'psql -U "$POSTGRES_USER" -d restore_teste -c "select count(*) from environmental_readings"'
+docker exec smartgarden-postgres sh -c 'dropdb -U "$POSTGRES_USER" restore_teste'
+```
+
+Em 27/11/2026, uma cópia foi restaurada assim e saiu idêntica ao banco real: leituras, plantas, registros, curva da água e as 9 migrações.
 
 ## Configuração MQTT
 
