@@ -123,6 +123,10 @@ public class Plant {
     @Column(name = "mean_error_percent")
     private Double meanErrorPercent;
 
+    /** Hora do último ponto guardado na curva da água (plant_water_history). */
+    @Column(name = "water_history_at")
+    private OffsetDateTime waterHistoryAt;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private OffsetDateTime createdAt;
 
@@ -467,6 +471,14 @@ public class Plant {
         if (this.estimatedAt == null) {
             this.estimatedAt = now;
         }
+    }
+
+    public OffsetDateTime getWaterHistoryAt() {
+        return waterHistoryAt;
+    }
+
+    public void setWaterHistoryAt(OffsetDateTime waterHistoryAt) {
+        this.waterHistoryAt = waterHistoryAt;
     }
 
     @PreUpdate

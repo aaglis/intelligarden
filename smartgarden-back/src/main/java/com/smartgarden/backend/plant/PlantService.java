@@ -1,12 +1,14 @@
 package com.smartgarden.backend.plant;
 
 import com.smartgarden.backend.common.ResourceAlreadyExistsException;
+import com.smartgarden.backend.common.TimeSeries;
 import com.smartgarden.backend.device.Device;
 import com.smartgarden.backend.device.DeviceService;
 import com.smartgarden.backend.plant.dto.CreatePlantRecordRequest;
 import com.smartgarden.backend.plant.dto.CreatePlantRequest;
 import com.smartgarden.backend.plant.dto.PlantRecordResponse;
 import com.smartgarden.backend.plant.dto.PlantResponse;
+import com.smartgarden.backend.plant.dto.PlantWaterHistoryResponse;
 import com.smartgarden.backend.plant.dto.UpdatePlantRequest;
 import com.smartgarden.backend.reading.dto.ReadingResponse;
 import jakarta.persistence.EntityNotFoundException;
@@ -20,6 +22,7 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.time.Duration;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Objects;
@@ -31,20 +34,25 @@ public class PlantService {
     static final int CALIBRATION_WINDOW = 10;
     /** Leituras com horário muito à frente do relógio do servidor (ESP sem NTP) não entram no balanço. */
     static final long MAX_CLOCK_SKEW_MINUTES = 5;
+    /** Intervalo entre dois pontos da curva da água; regas, irrigações e pesagens gravam pontos na hora. */
+    static final Duration WATER_HISTORY_STEP = Duration.ofMinutes(10);
 
     private final PlantRepository plantRepository;
     private final PlantRecordRepository recordRepository;
+    private final PlantWaterPointRepository waterHistoryRepository;
     private final DeviceService deviceService;
     private final ApplicationEventPublisher eventPublisher;
 
     public PlantService(
             PlantRepository plantRepository,
             PlantRecordRepository recordRepository,
+            PlantWaterPointRepository waterHistoryRepository,
             DeviceService deviceService,
             ApplicationEventPublisher eventPublisher
     ) {
         this.plantRepository = plantRepository;
         this.recordRepository = recordRepository;
+        this.waterHistoryRepository = waterHistoryRepository;
         this.deviceService = deviceService;
         this.eventPublisher = eventPublisher;
     }
@@ -76,7 +84,9 @@ public class PlantService {
             if (plant.canAutoIrrigate(at)) {
                 LOGGER.info("Irrigacao automatica: {} chegou a {}% (limite {}%)",
                         plant.getPlantCode(), Math.round(plant.waterPercent()), plant.getIrrigationThresholdPercent());
-                irrigateLocked(plant, true, at);
+                irrigateLocked(plant, true, at); // grava o ponto antes e o depois
+            } else {
+                recordWater(plant, at, false);
             }
         }
         eventPublisher.publishEvent(new PlantsUpdatedEvent(
@@ -93,6 +103,10 @@ public class PlantService {
         OffsetDateTime now = OffsetDateTime.now();
         PlantRecord record = PlantRecord.of(plant, request.type(), now);
         record.setNote(blankToNull(request.note()));
+        boolean changesWater = request.type() == PlantRecordType.WEIGHING || request.type() == PlantRecordType.WATERING;
+        if (changesWater) {
+            recordWater(plant, now, true);
+        }
 
         switch (request.type()) {
             case WEIGHING -> {
@@ -126,6 +140,9 @@ public class PlantService {
                     "type: a irrigação simulada é disparada em POST /api/plants/{code}/irrigations.");
         }
 
+        if (changesWater) {
+            recordWater(plant, now, true);
+        }
         PlantRecord saved = recordRepository.save(record);
         if (saved.getMeasuredLossMl() != null) {
             updateCalibration(plant);
@@ -155,6 +172,23 @@ public class PlantService {
                 .stream()
                 .map(PlantRecordResponse::fromEntity)
                 .toList();
+    }
+
+    /** Curva da água estimada no período, já espalhada para no máximo {@code limit} pontos. */
+    @Transactional(readOnly = true)
+    public PlantWaterHistoryResponse waterHistory(String plantCode, int hours, int limit) {
+        Plant plant = find(plantCode);
+        OffsetDateTime end = OffsetDateTime.now();
+        OffsetDateTime start = end.minusHours(Math.min(Math.max(hours, 1), 24 * 31));
+        int sanitizedLimit = Math.min(Math.max(limit, 2), 1000);
+        List<PlantWaterHistoryResponse.Point> points = TimeSeries.spread(
+                        waterHistoryRepository.findByPlantIdAndRecordedAtBetweenOrderByRecordedAtAscIdAsc(plant.getId(), start, end),
+                        PlantWaterPoint::getRecordedAt, start, end, sanitizedLimit)
+                .stream()
+                .map(p -> new PlantWaterHistoryResponse.Point(p.getRecordedAt(), p.getWaterMl(), p.getWaterPercent()))
+                .toList();
+        return new PlantWaterHistoryResponse(plant.getPlantCode(), plant.getWaterCapacityMl(),
+                plant.getIrrigationThresholdPercent(), start, end, points);
     }
 
     // ---------------------------------------------------------------- cadastro
@@ -198,6 +232,7 @@ public class PlantService {
         plant.startEstimate(request.initialWaterPercent() != null ? request.initialWaterPercent() : 100.0, OffsetDateTime.now());
 
         Plant saved = plantRepository.save(plant);
+        recordWater(saved, OffsetDateTime.now(), true);
         publishUpdated(saved);
         return PlantResponse.fromEntity(saved);
     }
@@ -259,7 +294,9 @@ public class PlantService {
         PlantRecord record = PlantRecord.of(plant, PlantRecordType.IRRIGATION, at);
         record.setAutomatic(automatic);
         record.setWaterMl(plant.getIrrigationMl());
+        recordWater(plant, at, true);
         plant.addWater(plant.getIrrigationMl(), false, at);
+        recordWater(plant, at, true);
         PlantRecord saved = recordRepository.save(record);
 
         String deviceCode = plant.getDevice() == null ? null : plant.getDevice().getDeviceCode();
@@ -269,6 +306,20 @@ public class PlantService {
                 PlantRecordResponse.fromEntity(saved)
         ));
         return saved;
+    }
+
+    /**
+     * Guarda um ponto da curva da água. Nas leituras, só se o último ponto estiver a 10 minutos ou mais (para frente
+     * ou para trás); com {@code force}, sempre: regas, irrigações e pesagens gravam um ponto antes e outro depois,
+     * para o degrau ficar no lugar certo.
+     */
+    private void recordWater(Plant plant, OffsetDateTime at, boolean force) {
+        OffsetDateTime last = plant.getWaterHistoryAt();
+        if (!force && last != null && Duration.between(last, at).abs().compareTo(WATER_HISTORY_STEP) < 0) {
+            return;
+        }
+        waterHistoryRepository.save(PlantWaterPoint.of(plant, at));
+        plant.setWaterHistoryAt(at);
     }
 
     /** k sugerido = mediana dos k medidos nas últimas pesagens; erro = |estimado − medido| / medido. */

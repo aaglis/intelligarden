@@ -132,6 +132,43 @@ class PlantServiceIntegrationTest {
     }
 
     @Test
+    void shouldRecordWaterHistoryEveryTenMinutesAndAroundIrrigation() {
+        createPlant(80.0, true);
+        OffsetDateTime t0 = OffsetDateTime.now().minusHours(3).truncatedTo(ChronoUnit.SECONDS);
+        reading(25.0, 50.0, t0);
+        reading(25.0, 50.0, t0.plusMinutes(5));   // menos de 10 min do último ponto: não grava
+        reading(25.0, 50.0, t0.plusMinutes(10));
+        reading(25.0, 50.0, t0.plusMinutes(15));  // não grava
+        reading(25.0, 50.0, t0.plusMinutes(25));
+
+        var fromReadings = plantService.waterHistory(plantCode, 24, 500).points().stream()
+                .filter(p -> !p.recordedAt().isBefore(t0) && !p.recordedAt().isAfter(t0.plusMinutes(25)))
+                .toList();
+        assertThat(fromReadings).extracting(p -> p.recordedAt().toInstant())
+                .containsExactly(t0.toInstant(), t0.plusMinutes(10).toInstant(), t0.plusMinutes(25).toInstant());
+        assertThat(fromReadings.get(2).waterMl()).isLessThan(fromReadings.get(0).waterMl());
+
+        plantService.irrigate(plantCode);
+        var points = plantService.waterHistory(plantCode, 24, 500).points();
+        var before = points.get(points.size() - 2);
+        var after = points.get(points.size() - 1);
+        assertThat(after.recordedAt().toInstant()).isEqualTo(before.recordedAt().toInstant());
+        assertThat(before.waterMl()).isLessThan(200.0);
+        assertThat(after.waterMl()).isEqualTo(200.0); // a irrigação (140 mL) enche até a capacidade do vaso
+    }
+
+    @Test
+    void shouldShowWeighingAsAStepBetweenEstimatedAndMeasured() {
+        createPlant(80.0, false);
+
+        plantService.addRecord(plantCode, new CreatePlantRecordRequest(PlantRecordType.WEIGHING, 1200.0, true, null, null, null));
+
+        var points = plantService.waterHistory(plantCode, 24, 500).points();
+        assertThat(points.get(points.size() - 2).waterPercent()).isCloseTo(80.0, within(0.01)); // estimado antes
+        assertThat(points.get(points.size() - 1).waterPercent()).isCloseTo(100.0, within(0.01)); // vaso cheio pesado
+    }
+
+    @Test
     void shouldRejectObservationWithoutNote() {
         createPlant(80.0, true);
 

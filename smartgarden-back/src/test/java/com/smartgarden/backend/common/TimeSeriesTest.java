@@ -1,4 +1,4 @@
-package com.smartgarden.backend.reading;
+package com.smartgarden.backend.common;
 
 import org.junit.jupiter.api.Test;
 
@@ -11,8 +11,8 @@ import java.util.function.Function;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-/** O histórico para gráfico precisa cobrir o período pedido, não só as leituras mais recentes. */
-class ReadingHistorySpreadTest {
+/** Os gráficos precisam cobrir o período pedido, não só os pontos mais recentes. */
+class TimeSeriesTest {
 
     private static final OffsetDateTime START = OffsetDateTime.of(2026, 11, 26, 0, 0, 0, 0, ZoneOffset.UTC);
     private static final OffsetDateTime END = START.plusHours(24);
@@ -26,7 +26,7 @@ class ReadingHistorySpreadTest {
     }
 
     private static List<OffsetDateTime> spread(List<OffsetDateTime> readings, int buckets) {
-        return EnvironmentalReadingService.spreadOverWindow(readings, Function.identity(), START, END, buckets);
+        return TimeSeries.spread(readings, Function.identity(), START, END, buckets);
     }
 
     @Test

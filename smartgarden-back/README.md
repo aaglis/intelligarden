@@ -209,6 +209,8 @@ A resposta da pesagem traz `estimatedLossMl`, `measuredLossMl`, `measuredCoeffic
 
 `GET /api/plants/{code}/records?limit=20` lista pesagens, regas, irrigações e observações, da mais nova para a mais antiga.
 
+`GET /api/plants/{code}/water-history?hours=72&limit=500` devolve a curva da água estimada no período (`waterMl` e `waterPercent` por ponto), com a capacidade e o limite da planta. O backend guarda um ponto a cada 10 minutos de leituras, e mais um antes e outro depois de cada rega, irrigação ou pesagem: o degrau fica no lugar certo e, na pesagem, mostra a diferença entre o estimado e o medido. Com mais pontos que `limit`, eles são espalhados pelo período, como no histórico de leituras.
+
 ### Simular irrigação
 
 `POST /api/plants/{code}/irrigations` → `201`

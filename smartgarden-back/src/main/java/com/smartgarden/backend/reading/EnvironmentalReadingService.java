@@ -1,6 +1,7 @@
 package com.smartgarden.backend.reading;
 
 import com.smartgarden.backend.common.PageResponse;
+import com.smartgarden.backend.common.TimeSeries;
 import com.smartgarden.backend.device.Device;
 import com.smartgarden.backend.device.DeviceService;
 import com.smartgarden.backend.reading.dto.CreateReadingRequest;
@@ -18,9 +19,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.OffsetDateTime;
-import java.util.ArrayList;
 import java.util.List;
-import java.util.function.Function;
 
 @Service
 public class EnvironmentalReadingService {
@@ -154,7 +153,7 @@ public class EnvironmentalReadingService {
                 Sort.by(Sort.Direction.ASC, "recordedAt")
         );
 
-        List<ReadingResponse> points = spreadOverWindow(history, EnvironmentalReading::getRecordedAt, windowStart, windowEnd, sanitizedLimit)
+        List<ReadingResponse> points = TimeSeries.spread(history, EnvironmentalReading::getRecordedAt, windowStart, windowEnd, sanitizedLimit)
                 .stream()
                 .map(ReadingResponse::fromEntity)
                 .toList();
@@ -170,35 +169,6 @@ public class EnvironmentalReadingService {
                 points.size(),
                 points
         );
-    }
-
-    /**
-     * Espalha os pontos pelo período: divide a janela em {@code buckets} faixas de tempo iguais e fica com a última
-     * leitura de cada faixa. Antes, com mais leituras que o limite, só as mais recentes voltavam (24 h pedidas viravam
-     * as últimas ~4 h). Faixas sem leitura (sensor desligado) ficam vazias, e o gráfico mostra o buraco.
-     *
-     * @param sorted leituras em ordem crescente de tempo
-     */
-    static <T> List<T> spreadOverWindow(List<T> sorted, Function<T, OffsetDateTime> time,
-                                        OffsetDateTime start, OffsetDateTime end, int buckets) {
-        if (sorted.size() <= buckets) {
-            return sorted;
-        }
-        long startMs = start.toInstant().toEpochMilli();
-        long span = Math.max(1, end.toInstant().toEpochMilli() - startMs);
-        List<T> spread = new ArrayList<>(buckets);
-        int current = -1;
-        for (T item : sorted) {
-            long offset = time.apply(item).toInstant().toEpochMilli() - startMs;
-            int bucket = (int) Math.min(buckets - 1, Math.max(0, offset * buckets / span));
-            if (bucket == current) {
-                spread.set(spread.size() - 1, item);
-            } else {
-                spread.add(item);
-                current = bucket;
-            }
-        }
-        return spread;
     }
 
     private Specification<EnvironmentalReading> hasDeviceCode(String deviceCode) {

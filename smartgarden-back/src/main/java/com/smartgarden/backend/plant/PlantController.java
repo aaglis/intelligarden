@@ -5,6 +5,7 @@ import com.smartgarden.backend.plant.dto.CreatePlantRecordRequest;
 import com.smartgarden.backend.plant.dto.CreatePlantRequest;
 import com.smartgarden.backend.plant.dto.PlantRecordResponse;
 import com.smartgarden.backend.plant.dto.PlantResponse;
+import com.smartgarden.backend.plant.dto.PlantWaterHistoryResponse;
 import com.smartgarden.backend.plant.dto.UpdatePlantRequest;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -72,6 +73,17 @@ public class PlantController {
             @RequestParam(defaultValue = "20") int limit
     ) {
         return plantService.listRecords(plantCode, limit);
+    }
+
+    @GetMapping("/{plantCode}/water-history")
+    @Operation(summary = "Curva da água estimada",
+            description = "Água estimada no período (um ponto a cada 10 min, mais um antes e um depois de cada rega, irrigação ou pesagem).")
+    public PlantWaterHistoryResponse waterHistory(
+            @PathVariable String plantCode,
+            @RequestParam(defaultValue = "72") int hours,
+            @RequestParam(defaultValue = "500") int limit
+    ) {
+        return plantService.waterHistory(plantCode, hours, limit);
     }
 
     @PostMapping("/{plantCode}/records")
