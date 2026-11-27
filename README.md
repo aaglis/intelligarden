@@ -40,6 +40,10 @@ Manjericão, lírio-da-paz e jiboia são vasos reais: a equipe rega de verdade e
 
 De onde vem cada número das plantas (faixas de temperatura e umidade, rega, base do modelo de água), com as fontes: [`docs/fichas-das-plantas.md`](docs/fichas-das-plantas.md).
 
+## Cópia de segurança
+
+O banco tem as leituras e as pesagens, que são o resultado do projeto. `smartgarden-infra/backup.sh` faz uma cópia verificada, e `./backup.sh instalar` agenda uma por dia. A restauração está descrita no [README da infra](smartgarden-infra/README.md#cópia-de-segurança-do-banco).
+
 ## Segredos
 
 Não são versionados: `smartgarden-infra/.env` (senhas do banco e do broker, lidas pelo Compose e pelo backend) e `smartgarden-firmware/esp32-dht22-serial/secrets.h` (Wi-Fi e senha MQTT do ESP32). O `.env.example` e o `secrets.example.h` só têm marcadores.
