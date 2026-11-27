@@ -32,11 +32,11 @@ Pesquisa feita em 26/11/2026. Os trechos citados foram conferidos nas páginas e
 | Planta | No sistema | O que as fontes sustentam | Situação |
 |---|---|---|---|
 | Lírio-da-paz | 18–29 °C · UR 50–80 % · rega a 40 % | 18,3–29,4 °C [10]; 20–29,4 °C [6][8]; umidade "moderada" [9], sem número; substrato úmido, secando só um pouco [6][9] | Temperatura coerente. Umidade sem número na literatura. |
-| Samambaia | 18–27 °C · UR 50–80 % · rega a 40 % | Interior: 20–24 °C [17]; umidade "alta" [18][19], sem número; "nunca deixar secar" [18] | **Temperatura acima do ideal das fontes.** |
-| Manjericão | 18–30 °C · UR 40–70 % · rega a 30 % | Ótimo de 25–30 °C, sobrevive até 10,9 °C [32]; em vaso, "irrigar pelo menos uma vez por dia" [30]; umidade constante no substrato [31] | Temperatura coerente. **Limite de rega seco demais.** |
+| Samambaia | 20–24 °C · UR 50–80 % · rega a 40 % | Interior: 20–24 °C [17]; umidade "alta" [18][19], sem número; "nunca deixar secar" [18] | Temperatura ajustada às fontes (era 18–27 °C). Umidade sem número na literatura. |
+| Manjericão | 18–30 °C · UR 40–70 % · rega a 50 % | Ótimo de 25–30 °C, sobrevive até 10,9 °C [32]; em vaso, "irrigar pelo menos uma vez por dia" [30]; umidade constante no substrato [31] | Temperatura coerente. Limite de rega ajustado (era 30 %). |
 | Mandacaru | 18–35 °C · UR 10–50 % · rega a 10 % | Cactos áridos: 18,3–29,4 °C no crescimento [36]; mudas cresceram bem a 31 °C e 46 % de UR [4]; regar a cada 2–3 semanas [37]; deixar secar [36] | Coerente, com a ressalva do CAM. |
-| Jiboia | 18–30 °C · UR 40–70 % · rega a 35 % | 18–30 °C [14]; UR preferida 50–70 %, tolera 30–60 % [12]; deixar secar antes de regar [12][14] | **Umidade mínima abaixo da preferida.** |
-| Espada-de-são-jorge | 15–30 °C · UR 30–60 % · rega a 15 % | Ideal 15–24 °C [23]; umidade baixa [23][26]; regar a cada 2–4 semanas na estação de crescimento [25] e a cada 1–2 meses no inverno [24] | **Temperatura máxima acima do ideal das fontes.** |
+| Jiboia | 18–30 °C · UR 50–70 % · rega a 35 % | 18–30 °C [14]; UR preferida 50–70 %, tolera 30–60 % [12]; deixar secar antes de regar [12][14] | Coerente; umidade ajustada (era 40–70 %). |
+| Espada-de-são-jorge | 15–24 °C · UR 30–60 % · rega a 15 % | Ideal 15–24 °C [23]; umidade baixa [23][26]; regar a cada 2–4 semanas na estação de crescimento [25] e a cada 1–2 meses no inverno [24] | Temperatura ajustada às fontes (era 15–30 °C). |
 
 ## Fichas
 
@@ -89,16 +89,18 @@ Pesquisa feita em 26/11/2026. Os trechos citados foram conferidos nas páginas e
   **É justamente o número que a pesagem diária calibra** nos três vasos reais (manjericão, lírio e jiboia).
 - **Capacidade do vaso.** Depende do vaso de verdade. Mede-se pela diferença entre o peso cheio e escorrido e o peso seco ([`pesagem-diaria.md`](pesagem-diaria.md)). Cassimiro et al. mediram a capacidade de forma parecida: água aplicada menos água drenada [4].
 
-## Ajustes que as fontes sugerem (ainda não aplicados)
+## Ajustes feitos a partir das fontes (migração V9, 26/11/2026)
 
-| Planta | Hoje | Sugerido | Por quê |
+| Planta | Antes | Agora | Por quê |
 |---|---|---|---|
 | Samambaia | 18–27 °C | 20–24 °C | Faixa de interior da UF/IFAS [17]; as outras fontes também ficam abaixo de 27 °C [10][18][19] |
 | Espada-de-são-jorge | 15–30 °C | 15–24 °C | Faixa ideal da RHS [23]; nenhuma fonte dá número acima de 24 °C |
 | Jiboia | UR 40–70 % | UR 50–70 % | "Preferred range: 50 to 70%" [12]; 40 % está só na faixa tolerada |
-| Manjericão | regar a 30 % | regar a 50 % | Embrapa: em vaso, pelo menos uma rega por dia [30]; umidade constante no substrato [31]. Com 50 %, o intervalo cai para cerca de 1 dia |
+| Manjericão | regar a 30 % (rega de 180 mL) | regar a 50 % (rega de 130 mL) | Embrapa: em vaso, pelo menos uma rega por dia [30]; umidade constante no substrato [31]. Com 50 %, o intervalo cai para cerca de 1 dia |
 
-O lírio e o mandacaru ficam como estão. O intervalo de rega da espada (cerca de 14 dias) já bate com as fontes [25].
+O lírio e o mandacaru ficaram como estavam. O intervalo de rega da espada (cerca de 14 dias) já batia com as fontes [25].
+
+Com as faixas corrigidas, a samambaia e a espada aparecem como "clima fora do ideal" quando a sala passa de 24 °C. Isso acontece com frequência: em 26/11/2026 a sala chegou a 30,8 °C. É o resultado honesto, porque o cantinho está mais quente do que essas duas plantas preferem.
 
 ## Referências
 
