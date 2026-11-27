@@ -18,6 +18,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.Duration;
+import java.time.Clock;
 import java.time.OffsetDateTime;
 import java.util.List;
 
@@ -27,15 +28,18 @@ public class EnvironmentalReadingService {
     private final EnvironmentalReadingRepository readingRepository;
     private final DeviceService deviceService;
     private final ApplicationEventPublisher eventPublisher;
+    private final Clock clock;
 
     public EnvironmentalReadingService(
             EnvironmentalReadingRepository readingRepository,
             DeviceService deviceService,
-            ApplicationEventPublisher eventPublisher
+            ApplicationEventPublisher eventPublisher,
+            Clock clock
     ) {
         this.readingRepository = readingRepository;
         this.deviceService = deviceService;
         this.eventPublisher = eventPublisher;
+        this.clock = clock;
     }
 
     @Transactional
@@ -48,7 +52,7 @@ public class EnvironmentalReadingService {
         }
 
         Device device = deviceService.findOrCreateByCode(request.deviceCode());
-        OffsetDateTime recordedAt = request.recordedAt() != null ? request.recordedAt() : OffsetDateTime.now();
+        OffsetDateTime recordedAt = request.recordedAt() != null ? request.recordedAt() : OffsetDateTime.now(clock);
         readingRepository.findFirstByDeviceDeviceCodeOrderByRecordedAtDesc(request.deviceCode())
                 .ifPresent(previous -> rejectImplausibleJump(previous, request.temperatureC(), request.humidityPercent(), recordedAt));
 
@@ -138,7 +142,7 @@ public class EnvironmentalReadingService {
             throw new EntityNotFoundException("Informe o deviceCode para consultar o histórico.");
         }
 
-        OffsetDateTime windowEnd = endAt != null ? endAt : OffsetDateTime.now();
+        OffsetDateTime windowEnd = endAt != null ? endAt : OffsetDateTime.now(clock);
         OffsetDateTime windowStart = startAt != null ? startAt : windowEnd.minusHours(Math.max(hours, 1));
         int sanitizedLimit = Math.min(Math.max(limit, 2), 500);
 

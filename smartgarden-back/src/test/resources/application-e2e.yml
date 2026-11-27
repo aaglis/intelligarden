@@ -1,0 +1,23 @@
+# Perfil dos testes de ponta a ponta (pasta e2e/ na raiz do repositório).
+# Banco H2 em memória (nada vai para o PostgreSQL real), MQTT desligado (não disputa a conexão com o backend de
+# verdade), porta própria e o relógio controlado de com.smartgarden.backend.e2e.
+# Se alguma variável de ambiente apontar para outro banco ou ligar o MQTT, o E2eClockConfig recusa subir.
+server:
+  port: ${E2E_PORT:18080}
+
+spring:
+  datasource:
+    url: jdbc:h2:mem:intelligarden-e2e;MODE=PostgreSQL;DB_CLOSE_DELAY=-1
+    driver-class-name: org.h2.Driver
+    username: sa
+    password: ""
+  web:
+    resources:
+      cache:
+        cachecontrol:
+          no-cache: true
+
+app:
+  mqtt:
+    enabled: false
+    client-id: intelligarden-e2e

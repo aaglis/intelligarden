@@ -22,6 +22,7 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.time.Clock;
 import java.time.Duration;
 import java.time.OffsetDateTime;
 import java.util.List;
@@ -42,19 +43,22 @@ public class PlantService {
     private final PlantWaterPointRepository waterHistoryRepository;
     private final DeviceService deviceService;
     private final ApplicationEventPublisher eventPublisher;
+    private final Clock clock;
 
     public PlantService(
             PlantRepository plantRepository,
             PlantRecordRepository recordRepository,
             PlantWaterPointRepository waterHistoryRepository,
             DeviceService deviceService,
-            ApplicationEventPublisher eventPublisher
+            ApplicationEventPublisher eventPublisher,
+            Clock clock
     ) {
         this.plantRepository = plantRepository;
         this.recordRepository = recordRepository;
         this.waterHistoryRepository = waterHistoryRepository;
         this.deviceService = deviceService;
         this.eventPublisher = eventPublisher;
+        this.clock = clock;
     }
 
     // ---------------------------------------------------------------- balanço de água
@@ -69,7 +73,7 @@ public class PlantService {
             return;
         }
         OffsetDateTime at = reading.recordedAt();
-        if (at.isAfter(OffsetDateTime.now().plusMinutes(MAX_CLOCK_SKEW_MINUTES))) {
+        if (at.isAfter(OffsetDateTime.now(clock).plusMinutes(MAX_CLOCK_SKEW_MINUTES))) {
             LOGGER.warn("Leitura {} com horario no futuro ({}); fora do balanco de agua", reading.id(), at);
             return;
         }
@@ -100,7 +104,7 @@ public class PlantService {
     @Transactional
     public PlantRecordResponse addRecord(String plantCode, CreatePlantRecordRequest request) {
         Plant plant = lock(plantCode);
-        OffsetDateTime now = OffsetDateTime.now();
+        OffsetDateTime now = OffsetDateTime.now(clock);
         PlantRecord record = PlantRecord.of(plant, request.type(), now);
         record.setNote(blankToNull(request.note()));
         boolean changesWater = request.type() == PlantRecordType.WEIGHING || request.type() == PlantRecordType.WATERING;
@@ -159,7 +163,7 @@ public class PlantService {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "Esta planta é um vaso real: registre a rega feita pela equipe em vez de simular.");
         }
-        PlantRecord record = irrigateLocked(plant, false, OffsetDateTime.now());
+        PlantRecord record = irrigateLocked(plant, false, OffsetDateTime.now(clock));
         publishUpdated(plant);
         return PlantRecordResponse.fromEntity(record);
     }
@@ -178,7 +182,7 @@ public class PlantService {
     @Transactional(readOnly = true)
     public PlantWaterHistoryResponse waterHistory(String plantCode, int hours, int limit) {
         Plant plant = find(plantCode);
-        OffsetDateTime end = OffsetDateTime.now();
+        OffsetDateTime end = OffsetDateTime.now(clock);
         OffsetDateTime start = end.minusHours(Math.min(Math.max(hours, 1), 24 * 31));
         int sanitizedLimit = Math.min(Math.max(limit, 2), 1000);
         List<PlantWaterHistoryResponse.Point> points = TimeSeries.spread(
@@ -229,10 +233,10 @@ public class PlantService {
         plant.setHumidityMinPercent(request.humidityMinPercent());
         plant.setHumidityMaxPercent(request.humidityMaxPercent());
         checkRanges(plant);
-        plant.startEstimate(request.initialWaterPercent() != null ? request.initialWaterPercent() : 100.0, OffsetDateTime.now());
+        plant.startEstimate(request.initialWaterPercent() != null ? request.initialWaterPercent() : 100.0, OffsetDateTime.now(clock));
 
         Plant saved = plantRepository.save(plant);
-        recordWater(saved, OffsetDateTime.now(), true);
+        recordWater(saved, OffsetDateTime.now(clock), true);
         publishUpdated(saved);
         return PlantResponse.fromEntity(saved);
     }

@@ -16,6 +16,7 @@ ESP32 + DHT22 ──MQTT──▶ Mosquitto ──▶ Spring Boot ──▶ Post
 | [`smartgarden-back`](smartgarden-back) | Backend Java 21 / Spring Boot (REST, MQTT, SSE, água estimada das plantas) |
 | [`smartgarden-infra`](smartgarden-infra) | PostgreSQL e Mosquitto via Docker Compose |
 | [`intelligarden-web`](intelligarden-web) | Interface 3D (IntelliGarden), servida pelo backend em `/` |
+| [`e2e`](e2e) | Testes de ponta a ponta (Playwright): conferem as contas da água e o que a página mostra |
 
 Cada pasta tem seu próprio README com instruções detalhadas.
 
@@ -39,6 +40,15 @@ Para gravar o ESP32, crie `smartgarden-firmware/esp32-dht22-serial/secrets.h` a 
 Manjericão, lírio-da-paz e jiboia são vasos reais: a equipe rega de verdade e pesa todo dia, e as pesagens conferem e calibram a água estimada. Passo a passo em [`docs/pesagem-diaria.md`](docs/pesagem-diaria.md).
 
 De onde vem cada número das plantas (faixas de temperatura e umidade, rega, base do modelo de água), com as fontes: [`docs/fichas-das-plantas.md`](docs/fichas-das-plantas.md).
+
+## Testes
+
+```bash
+(cd smartgarden-back && mvn test)              # testes do backend
+(cd e2e && npm install && npm test)            # ponta a ponta: página + backend de teste, sem tocar no banco real
+```
+
+Os de ponta a ponta injetam leituras e pesagens e comparam cada número da página com uma conta de referência. O que cada um confere está no [README da pasta e2e](e2e/README.md).
 
 ## Cópia de segurança
 
