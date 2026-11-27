@@ -1,0 +1,13 @@
+{
+  "name": "intelligarden-e2e",
+  "private": true,
+  "type": "module",
+  "description": "Testes de ponta a ponta: conferem as contas da água das plantas e o que a página 3D mostra",
+  "scripts": {
+    "test": "playwright test",
+    "relatorio": "playwright show-report"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.61.1"
+  }
+}
