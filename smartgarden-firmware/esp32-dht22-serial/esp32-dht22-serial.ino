@@ -3,13 +3,14 @@
 #include <ArduinoJson.h>
 #include <DHT.h>
 #include <time.h>
+#include "plausibilidade.h"
 
 // ===== CONFIGURAÇÃO DO SENSOR =====
 #define DHTPIN 4          // GPIO conectado ao DATA do DHT22
 #define DHTTYPE DHT22     // Tipo do sensor
 #define LED_PIN 2         // LED azul da placa (ESP32 DevKit); acende quando a "irrigação" é acionada
 
-const char* FIRMWARE_VERSION = "1.1.0";
+const char* FIRMWARE_VERSION = "1.2.0";
 
 // ===== CONFIGURAÇÃO LOCAL =====
 // WIFI_SSID, WIFI_PASSWORD e os dados do broker MQTT ficam em secrets.h, que não vai para o Git.
@@ -56,6 +57,11 @@ unsigned long lastMqttRetryAt = 0;
 bool hasRead = false;
 bool hasTriedMqtt = false;
 bool wifiOnline = false;
+
+// Última leitura aceita: as próximas são comparadas com ela (veja plausibilidade.h).
+Leitura ultimaAceita{NAN, NAN};
+unsigned long ultimaAceitaEm = 0;
+bool temUltimaAceita = false;
 
 // LED sem travar o loop: aceso até ledOffAt (irrigação) ou piscando blinkTogglesLeft vezes (identificar).
 unsigned long ledOffAt = 0;
@@ -273,6 +279,24 @@ void publishReading(float temperature, float humidity) {
   Serial.println("---------------------------------");
 }
 
+// Espera sem deixar o MQTT e o LED parados.
+void esperarAtendendo(unsigned long ms) {
+  unsigned long inicio = millis();
+  while (millis() - inicio < ms) {
+    mqtt.loop();
+    updateLed();
+    delay(20);
+  }
+}
+
+void imprimirLeitura(const char* rotulo, Leitura l) {
+  Serial.print(rotulo);
+  Serial.print(l.temperatura, 2);
+  Serial.print(" C, ");
+  Serial.print(l.umidade, 2);
+  Serial.println(" %");
+}
+
 void setup() {
   Serial.begin(115200);
   delay(2000);  // estabiliza a serial e o DHT22
@@ -309,19 +333,32 @@ void loop() {
   hasRead = true;
   lastReadAt = millis();
 
-  float humidity = dht.readHumidity();
-  float temperature = dht.readTemperature();
+  // Falha ou salto impossível: lê de novo (até 3 vezes) antes de publicar.
+  bool comparar = temUltimaAceita && millis() - ultimaAceitaEm < JANELA_SALTO_MS;
+  Resultado r = lerComReleitura(
+      [] { return Leitura{dht.readTemperature(), dht.readHumidity()}; },
+      esperarAtendendo,
+      comparar ? &ultimaAceita : nullptr);
 
-  if (isnan(humidity) || isnan(temperature)) {
-    Serial.println("ERRO: Falha ao ler o DHT22! Verifique alimentacao, GPIO e cabo DATA.");
+  if (!r.aceita) {
+    if (r.problema == Problema::Salto) {
+      imprimirLeitura("Leitura descartada: salto impossivel nas 3 tentativas. Ultima lida: ", r.leitura);
+      imprimirLeitura("  Ultima aceita: ", ultimaAceita);
+    } else {
+      Serial.println("ERRO: Falha ao ler o DHT22 nas 3 tentativas! Verifique alimentacao, GPIO e cabo DATA.");
+    }
     return;
   }
 
-  Serial.print("Leitura: ");
-  Serial.print(temperature, 2);
-  Serial.print(" C, ");
-  Serial.print(humidity, 2);
-  Serial.println(" %");
+  if (r.tentativas > 1) {
+    Serial.print("Releitura: a tentativa ");
+    Serial.print(r.tentativas);
+    Serial.println(r.problema == Problema::Salto ? " corrigiu um salto impossivel." : " corrigiu uma falha do sensor.");
+  }
+  imprimirLeitura("Leitura: ", r.leitura);
+  ultimaAceita = r.leitura;
+  ultimaAceitaEm = millis();
+  temUltimaAceita = true;
 
-  publishReading(temperature, humidity);
+  publishReading(r.leitura.temperatura, r.leitura.umidade);
 }
