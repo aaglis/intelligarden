@@ -38,6 +38,10 @@ A interface 3D não precisa de um passo próprio: abra `http://localhost:8080/`,
 
 Para gravar o ESP32, crie `smartgarden-firmware/esp32-dht22-serial/secrets.h` a partir de `secrets.example.h` (veja o README do firmware).
 
+## Vasos reais e pesagem diária
+
+Manjericão, lírio-da-paz e jiboia são vasos reais: a equipe rega de verdade e pesa todo dia, e as pesagens conferem e calibram a água estimada. Passo a passo em [`docs/pesagem-diaria.md`](docs/pesagem-diaria.md).
+
 ## Segredos
 
 Não são versionados: `smartgarden-infra/.env` (senhas do banco e do broker, lidas pelo Compose e pelo backend) e `smartgarden-firmware/esp32-dht22-serial/secrets.h` (Wi-Fi e senha MQTT do ESP32). O `.env.example` e o `secrets.example.h` só têm marcadores.
