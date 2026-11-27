@@ -34,10 +34,12 @@ Por padrão a página usa o backend do mesmo endereço (ou a porta 8080, quando 
 
 - **Plantas:** só aparecem no 3D as plantas com modelo na maquete (`lirio`, `samambaia`, `manjericao`, `mandacaru`, `jiboia`, `espada`) e ligadas ao sensor. Uma planta da maquete que não existe no servidor some da sala; uma planta do servidor sem modelo fica fora do 3D (aparece no console).
 - **Ficha:** água estimada, limite, previsão da próxima irrigação (se o clima continuar igual), clima x faixa ideal da espécie, ritmo de perda e os últimos registros.
+- **Curva da água (ficha da planta):** a água estimada dos últimos 3 dias, com a linha do limite e as pesagens marcadas por cima (o que a balança mediu). Regas, irrigações e pesagens aparecem como degraus; a dica mostra o antes e o depois. A curva começou a ser gravada em 26/11/2026, então os primeiros dias mostram só o período desde então.
 - **Registrar:** pesagem (com a opção "vaso cheio", que vira a referência), rega e observação são gravadas na API. A prévia da pesagem compara a perda medida com a estimada antes de salvar. A foto da observação ainda não é guardada no servidor, então o campo some quando a página está ligada ao backend.
 - **Simular irrigação:** grava a irrigação, enche a água estimada e acende o LED do ESP32 (1 s a cada 10 mL). Em vasos reais (`autoIrrigation: false`) o botão fica desativado: a equipe rega e registra.
 - **Irrigação automática:** quando uma planta virtual chega no limite, o backend irriga sozinho; a página mostra a chuva no vaso, o aviso e o LED da maquete aceso pelo mesmo tempo do LED da placa.
-- **Sensor:** temperatura, umidade, VPD, online/offline e o botão "Piscar LED", que manda o comando ao ESP32.
+- **Sensor:** temperatura, umidade, VPD, online/offline e o botão "Piscar LED", que manda o comando ao ESP32. Na ficha, os gráficos de temperatura e umidade das últimas 24 h (um ponto a cada 5 min; buraco quando o sensor não enviou).
+- **Gráficos:** passar o mouse ou o dedo mostra os valores de cada horário; com o gráfico em foco, as setas também. Cada gráfico tem uma tabela por hora logo abaixo.
 
 ## Como usar
 

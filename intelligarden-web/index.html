@@ -41,6 +41,7 @@
   /* linhas do histórico: temperatura (laranja) e umidade (azul), validadas para daltonismo e contraste */
   --c-temp: #eb6834;
   --c-umid: #2463A8;
+  --c-water: var(--c-umid);
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
@@ -231,6 +232,18 @@ p { margin: 0; }
 .h-table th { font-weight: 500; color: var(--muted); }
 .h-table th, .h-table td { padding: 6px 0; border-top: 1px solid var(--line); text-align: right; }
 .h-table th:first-child, .h-table td:first-child { text-align: left; }
+/* curva da água da planta: linha da água estimada, linha do limite e pesagens (o que a balança mediu) por cima */
+.wchart { min-height: 150px; }
+.hist .ln-w { stroke: var(--c-water); }
+.hist .dot-w { fill: var(--c-water); }
+.hist .dot-m { fill: var(--ink); }
+.hist .lim { stroke: var(--muted); stroke-width: 1; opacity: 0.75; }
+.w-legend { display: flex; flex-wrap: wrap; gap: 4px 16px; margin: -2px 0 10px; font-size: 12px; color: var(--muted); }
+.w-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.w-legend .k { width: 14px; height: 2px; border-radius: 1px; background: var(--c-water); }
+.w-legend .m { width: 9px; height: 9px; border-radius: 50%; background: var(--ink); box-shadow: 0 0 0 2px var(--surface); }
+.w-legend .l { width: 14px; height: 1px; background: var(--muted); }
+.h-tip .m { display: inline-block; width: 8px; height: 8px; margin: 0 8px 0 2px; border-radius: 50%; background: var(--ink); vertical-align: middle; }
 .facts { margin: 14px 0 0; display: flex; flex-direction: column; }
 .facts > div { display: flex; justify-content: space-between; gap: 12px; padding: 10px 0; border-top: 1px solid var(--line); font-size: 14px; }
 .facts dt { color: var(--muted); }
@@ -760,6 +773,8 @@ function onIrrigated(d, r) {
   ledOnUntil = performance.now() + s * 1000;
   toast(`${r.automatic ? 'Irrigação automática' : 'Irrigação acionada'} · ${p.name}`,
     sensorOnline() ? `${fmtInt(r.waterMl)} mL · LED do IG-01 aceso por ${s} s` : `${fmtInt(r.waterMl)} mL · IG-01 offline, o LED não acende agora`, 'water');
+  /* depois do aviso: a curva busca o degrau novo no servidor */
+  if (selectedId === p.id) loadWater(p);
 }
 
 async function loadAll() {
@@ -800,6 +815,7 @@ function startLive(data) {
   live.readingAt = null;
   hist.points = null;
   hist.at = 0;
+  for (const q of plants) q.wh = null;
   $('#demo-tag').hidden = true;
   const codes = new Set(data.list.map((d) => d.code));
   for (const p of [...plants]) if (!codes.has(p.id)) dropPlant(p);
@@ -809,7 +825,7 @@ function startLive(data) {
   connectStream();
   climateChanged();
   const p = byId[selectedId];
-  if (p && plants.includes(p)) { renderSheet(plantSheet(p)); loadRecords(p); }
+  if (p && plants.includes(p)) { renderSheet(plantSheet(p)); loadRecords(p); openWater(p); }
   else if (p) back();
   else if (selectedId === 'sensor') { renderSheet(sensorSheet()); openHistory(); }
 }
@@ -934,7 +950,7 @@ async function resync() {
   try {
     applyAll(await loadAll(), true);
     const p = byId[selectedId];
-    if (p) loadRecords(p);
+    if (p) { loadRecords(p); loadWater(p); }
   } catch {
     /* a próxima reconexão tenta de novo */
   }
@@ -1041,7 +1057,7 @@ function scaleY(vals, minSpan) {
   for (let v = lo; v <= hi + step / 2; v += step) ticks.push(Math.round(v * 100) / 100);
   return { lo, hi, ticks };
 }
-const histWhen = (t) => { const d = new Date(t); return `${dayWord(d) || d.toLocaleDateString('pt-BR')}, ${hhmm(d)}`; };
+const histWhen = (t) => { const d = new Date(t); return `${dayWord(d) || d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}, ${hhmm(d)}`; };
 function renderHistory() {
   const box = document.getElementById('s-hist');
   if (!box) return;
@@ -1148,6 +1164,162 @@ function renderHistory() {
     show(i);
   });
   hist.idx = null;
+}
+
+/* ---------------- curva da água da planta ---------------- */
+/* Água estimada (linha) com o limite de irrigação e as pesagens por cima: o que o sistema estimava e o que a balança mediu.
+   O backend guarda um ponto a cada 10 min e um antes e outro depois de cada rega, irrigação ou pesagem (o degrau). */
+const WATER_MS = 72 * 3600e3, WATER_MIN_SPAN = 3 * 3600e3, WATER_POINTS = 432;
+function demoWater(p) {
+  /* exemplo: dente de serra que termina na água atual, perdendo ~1,2 %/h e voltando a 100 % no limite */
+  const now = Date.now(), out = [];
+  let w = p.water;
+  for (let i = 0; i <= 432; i++) {
+    out.push({ t: now - i * 600e3, w });
+    w += 0.2;
+    if (w > 100) w = p.limit + (w - 100);
+  }
+  return out.reverse();
+}
+async function loadWater(p) {
+  if (!p) return;
+  if (!live.on) {
+    p.wh = { points: demoWater(p), weighings: [], at: Date.now() };
+    renderWater(p);
+    return;
+  }
+  p.wh = Object.assign(p.wh || {}, { loading: true });
+  renderWater(p);
+  try {
+    const [h, recs] = await Promise.all([
+      api(plantPath(p, `/water-history?hours=72&limit=${WATER_POINTS}`)),
+      api(plantPath(p, '/records?limit=40'))
+    ]);
+    p.wh = {
+      points: (h.points || []).map((x) => ({ t: Date.parse(x.recordedAt), w: x.waterPercent })),
+      weighings: (recs || []).filter((r) => r.type === 'weighing' && r.measuredWaterPercent != null)
+        .map((r) => ({ t: Date.parse(r.recordedAt), w: r.measuredWaterPercent })),
+      at: Date.now()
+    };
+  } catch (err) {
+    p.wh = Object.assign(p.wh || {}, { loading: false, err: err.message });
+  }
+  renderWater(p);
+}
+function openWater(p) {
+  renderWater(p);
+  if (!p.wh || !p.wh.points || Date.now() - p.wh.at > 300e3) loadWater(p);
+}
+function renderWater(p) {
+  const box = document.getElementById('s-water');
+  if (!box || selectedId !== p.id) return;
+  const wh = p.wh || {};
+  box.classList.toggle('is-loading', !!wh.loading && !!wh.points);
+  const lbl = $('#w-lbl');
+  const x1 = Date.now();
+  let pts = wh.points ? wh.points.filter((q) => q.t >= x1 - WATER_MS) : null;
+  if (!pts) {
+    box.innerHTML = `<p class="h-msg">${esc(wh.err ? `Não deu para carregar a curva. ${wh.err}` : 'Carregando a curva…')}</p>`;
+    return;
+  }
+  /* o último ponto é a estimativa de agora (o backend grava a cada 10 min) */
+  if (p.api && (!pts.length || x1 - pts[pts.length - 1].t > 60e3)) pts = pts.concat({ t: x1, w: clamp(p.api.estimatedWaterPercent, 0, 100), now: true });
+  if (pts.length < 2) {
+    box.innerHTML = '<p class="h-msg">A curva começa com as próximas leituras do sensor: um ponto a cada 10 minutos.</p>';
+    return;
+  }
+  const first = pts[0].t;
+  const x0 = Math.min(first, x1 - WATER_MIN_SPAN);
+  if (lbl) lbl.textContent = `Água estimada · ${x1 - first > WATER_MS - 3600e3 ? 'últimos 3 dias' : `desde ${histWhen(first)}`}${p.api ? '' : ' · exemplo'}`;
+  const tableOpen = !!(box.querySelector('details') || {}).open;
+  const W = Math.max(240, Math.round(box.clientWidth)), L = 30, R = 10, TOP = 8, PH = 104, H = 140;
+  const X = (t) => L + ((t - x0) / (x1 - x0)) * (W - L - R);
+  const Y = (v) => TOP + PH - (clamp(v, 0, 100) / 100) * PH;
+  const weigh = (wh.weighings || []).filter((m) => m.t >= x0);
+  let body = '';
+  for (const v of [0, 50, 100]) {
+    const y = Y(v).toFixed(1);
+    body += `<line class="grid" x1="${L}" x2="${W - R}" y1="${y}" y2="${y}"/><text class="tick" x="${L - 6}" y="${(+y + 3.5).toFixed(1)}" text-anchor="end">${v}</text>`;
+  }
+  const ly = Y(p.limit).toFixed(1);
+  body += `<line class="lim" x1="${L}" x2="${W - R}" y1="${ly}" y2="${ly}"/>`; /* o rótulo fica na legenda, para não encostar na linha */
+  /* linha: quebra se faltar ponto por mais de 40 min (sensor ou servidor parados) */
+  let d = '', prev = null;
+  for (const q of pts) {
+    d += `${!prev || q.t - prev.t > 40 * 60e3 ? 'M' : 'L'}${X(q.t).toFixed(1)},${Y(q.w).toFixed(1)}`;
+    prev = q;
+  }
+  const last = pts[pts.length - 1];
+  body += `<path class="ln ln-w" d="${d}"/><circle class="dot dot-w" cx="${X(last.t).toFixed(1)}" cy="${Y(last.w).toFixed(1)}" r="4"/>`;
+  for (const m of weigh) body += `<circle class="dot dot-m" cx="${X(m.t).toFixed(1)}" cy="${Y(m.w).toFixed(1)}" r="4.5"/>`;
+  /* eixo do tempo: o passo das marcas acompanha o período (1 h a 24 h); meia-noite vira o dia da semana */
+  const span = x1 - x0, H_ = 3600e3;
+  const every = span <= 4 * H_ ? 1 : span <= 12 * H_ ? 3 : span <= 30 * H_ ? 6 : span <= 60 * H_ ? 12 : 24;
+  const hour = new Date(x0);
+  hour.setMinutes(0, 0, 0);
+  for (let t = hour.getTime() + 3600e3; t <= x1; t += 3600e3) {
+    const dt = new Date(t), hr = dt.getHours(), x = X(t);
+    if (hr % every || x < L + 14 || x > W - R - 14) continue;
+    const txt = hr === 0 ? dt.toLocaleDateString('pt-BR', { weekday: 'short' }).replace('.', '') : `${String(hr).padStart(2, '0')}h`;
+    body += `<line class="grid" x1="${x.toFixed(1)}" x2="${x.toFixed(1)}" y1="${TOP + PH + 2}" y2="${TOP + PH + 6}"/><text class="tick" x="${x.toFixed(1)}" y="${TOP + PH + 18}" text-anchor="middle">${esc(txt)}</text>`;
+  }
+  body += `<g class="xh-g" visibility="hidden"><line class="xh" y1="${TOP}" y2="${TOP + PH}"/><circle class="dot dot-w" r="4"/></g>`;
+  /* tabela: nível no fim de cada hora, e a pesagem quando houve */
+  const byHour = new Map();
+  for (const q of pts) { const k = new Date(q.t); k.setMinutes(0, 0, 0); byHour.set(k.getTime(), { w: q.w, m: (byHour.get(k.getTime()) || {}).m }); }
+  for (const m of weigh) { const k = new Date(m.t); k.setMinutes(0, 0, 0); const e = byHour.get(k.getTime()) || { w: null }; e.m = m.w; byHour.set(k.getTime(), e); }
+  const rows = [...byHour].sort((a, b) => b[0] - a[0])
+    .map(([k, e]) => `<tr><td>${esc(histWhen(k))}</td><td>${e.w == null ? '–' : `${Math.round(e.w)} %`}</td><td>${e.m == null ? '–' : `${Math.round(e.m)} %`}</td></tr>`).join('');
+  const lo = Math.min(...pts.map((q) => q.w)), hi = Math.max(...pts.map((q) => q.w));
+  const label = `Água estimada no vaso, de ${Math.round(lo)} a ${Math.round(hi)} %, limite ${fmtN(p.limit)} %${weigh.length ? `, ${weigh.length} ${weigh.length === 1 ? 'pesagem' : 'pesagens'} marcadas` : ''}. Use as setas para ler os valores.`;
+  box.innerHTML = `<p class="w-legend"><span><i class="k"></i>estimada</span>${weigh.length ? '<span><i class="m"></i>pesagem (balança)</span>' : ''}<span><i class="l"></i>limite ${fmtN(p.limit)} %</span></p>`
+    + `<div style="position: relative"><svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" tabindex="0" role="img" aria-label="${esc(label)}">${body}</svg><div class="h-tip" hidden></div></div>`
+    + `<details class="h-table"${tableOpen ? ' open' : ''}><summary>Ver em tabela (por hora)</summary><table><thead><tr><th>Hora</th><th>Estimada</th><th>Pesagem</th></tr></thead><tbody>${rows}</tbody></table></details>`;
+
+  /* camada de leitura */
+  const svg = box.querySelector('svg'), tip = box.querySelector('.h-tip'), g = svg.querySelector('.xh-g');
+  const [xl, cw] = g.children;
+  let idx = null;
+  const show = (i) => {
+    idx = i;
+    const q = pts[i], x = X(q.t).toFixed(1);
+    xl.setAttribute('x1', x); xl.setAttribute('x2', x);
+    cw.setAttribute('cx', x); cw.setAttribute('cy', Y(q.w).toFixed(1));
+    g.setAttribute('visibility', 'visible');
+    const m = weigh.find((z) => Math.abs(z.t - q.t) <= 20 * 60e3);
+    /* rega, irrigação ou pesagem gravam dois pontos no mesmo horário: mostra o antes e o depois */
+    const twin = pts.filter((z) => z.t === q.t);
+    const val = twin.length > 1 ? `${Math.round(twin[0].w)} → ${Math.round(twin[twin.length - 1].w)} %` : `${Math.round(q.w)} %`;
+    tip.innerHTML = `<span>${esc(q.now ? 'agora' : histWhen(q.t))}</span>`
+      + `<span><i class="k" style="background: var(--c-water)"></i><b>${val}</b> estimada</span>`
+      + (m ? `<span><i class="m"></i><b>${Math.round(m.w)} %</b> pesagem</span>` : '');
+    tip.hidden = false;
+    const k = svg.getBoundingClientRect().width / W, half = tip.offsetWidth / 2;
+    tip.style.left = `${clamp(+x * k, half, box.clientWidth - half)}px`;
+  };
+  const hide = () => { idx = null; g.setAttribute('visibility', 'hidden'); tip.hidden = true; };
+  const nearest = (clientX) => {
+    const r = svg.getBoundingClientRect(), xv = ((clientX - r.left) * W) / r.width;
+    let best = 0, bd = Infinity;
+    pts.forEach((q, i) => { const dd = Math.abs(X(q.t) - xv); if (dd < bd) { bd = dd; best = i; } });
+    return best;
+  };
+  svg.addEventListener('pointermove', (e) => show(nearest(e.clientX)));
+  svg.addEventListener('pointerdown', (e) => show(nearest(e.clientX)));
+  svg.addEventListener('pointerleave', (e) => { if (e.pointerType !== 'touch') hide(); });
+  svg.addEventListener('focus', () => show(pts.length - 1));
+  svg.addEventListener('blur', hide);
+  svg.addEventListener('keydown', (e) => {
+    let i = idx != null ? idx : pts.length - 1;
+    if (e.key === 'ArrowLeft') i = Math.max(0, i - 1);
+    else if (e.key === 'ArrowRight') i = Math.min(pts.length - 1, i + 1);
+    else if (e.key === 'Home') i = 0;
+    else if (e.key === 'End') i = pts.length - 1;
+    else return;
+    e.preventDefault();
+    e.stopPropagation();
+    show(i);
+  });
 }
 
 /* ---------------- carregamento ---------------- */
@@ -2286,6 +2458,7 @@ function focusPlant(id, focusAct) {
   renderSheet(plantSheet(p), swap, focusAct);
   openSheet();
   loadRecords(p);
+  openWater(p);
 }
 function focusSensor() {
   if (!booted) return;
@@ -2484,6 +2657,10 @@ function plantSheet(p) {
       </div>
       <div class="gauge-scale"><span style="left:clamp(34px, ${p.limit}%, calc(100% - 34px))">limite ${fmtN(p.limit)} %</span></div>
       <p class="s-text" id="s-next">${esc(nextText(p))}</p>
+    </section>
+    <section aria-labelledby="w-lbl">
+      <p class="lbl" id="w-lbl">Água estimada${p.api ? '' : ' · exemplo'}</p>
+      <div class="hist wchart" id="s-water"></div>
     </section>
     <section aria-label="Clima agora">
       <p class="lbl">Clima agora</p>
@@ -2790,6 +2967,7 @@ form.addEventListener('submit', async (e) => {
     const d = await api(plantPath(p)).catch(() => null);
     if (d) applyApi(p, d);
     addRecord(p, r);
+    if (r.type !== 'observation') loadWater(p);
     if (r.type === 'watering') p.obj.wet = Math.max(p.obj.wet, 0.8);
     closeReg();
     toast('Registro salvo', savedText(p, r), 'ok');
@@ -3079,6 +3257,7 @@ function resize() {
   camera.aspect = w / h;
   updateShift();
   if (selectedId === 'sensor') renderHistory();
+  else if (byId[selectedId]) renderWater(byId[selectedId]);
   if (mode === 'overview' && !rig.flight) {
     const st = overviewState();
     rig.lim = LIM.overview(st);
@@ -3125,6 +3304,7 @@ setInterval(() => {
   const st = document.getElementById('s-sstatus');
   if (st) st.innerHTML = sensorStatusMarkup();
   if (secs % 30 === 0 && byId[selectedId]) refreshLog(byId[selectedId]);
+  if (secs % 600 === 0 && byId[selectedId]) loadWater(byId[selectedId]);
 }, 1000);
 
 readTheme();
