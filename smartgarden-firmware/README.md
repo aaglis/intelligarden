@@ -1,4 +1,4 @@
-# SmartGarden Firmware
+# IntelliGarden · firmware
 
 Firmware do sensor do ambiente do projeto (ESP32 + DHT22). A cada 30 s ele lê **temperatura** e **umidade do ar** e publica a leitura no broker **MQTT** (Mosquitto do `smartgarden-infra`). Ele também avisa quando está online/offline e recebe comandos do backend: piscar o LED e **irrigação simulada** (LED aceso).
 
