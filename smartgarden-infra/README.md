@@ -115,6 +115,26 @@ docker exec smartgarden-postgres sh -c 'dropdb -U "$POSTGRES_USER" restore_teste
 
 Em 27/11/2026, uma cópia foi restaurada assim e saiu idêntica ao banco real: leituras, plantas, registros, curva da água e as 9 migrações.
 
+## Pesagens simuladas (teste, sem vaso real)
+
+Sem vasos de verdade, `simular-pesagens.py` faz o papel da equipe com a balança, seguindo o protocolo de `docs/pesagem-diaria.md`, nos vasos com a irrigação simulada desligada (manjericão, lírio e jiboia):
+
+- na primeira vez, pesa o vaso cheio;
+- depois, uma pesagem por dia: a perda vem do clima real medido pelo sensor desde a pesagem anterior, com um k "verdadeiro" escondido para cada planta, uma variação de ±8 % de um dia para o outro e o ruído de uma balança de cozinha;
+- quando a balança mostra menos de 70 % de água, rega e pesa de novo, como vaso cheio.
+
+Se o sistema estiver certo, o k sugerido na ficha de cada planta chega perto do k verdadeiro que está no script (manjericão 2,6; lírio 2,2; jiboia 0,75). Num teste de 10 dias simulados no backend de teste, chegou a 2,61, 2,33 e 0,75.
+
+Todo registro sai com a nota "Pesagem simulada", para separar das pesagens de verdade. A página ainda não mostra essa nota: na ficha, a pesagem simulada aparece como uma pesagem comum.
+
+```bash
+./simular-pesagens.py            # pesa agora
+./simular-pesagens.py instalar   # uma vez por dia, às 9h (timer do systemd do usuário)
+./simular-pesagens.py remover    # tira o agendamento
+```
+
+O script só grava no backend desta máquina (`localhost`) e pula um vaso pesado há menos de 6 horas. Para apagar as pesagens simuladas, restaure uma cópia do banco feita antes delas (veja "Restaurar uma cópia").
+
 ## Configuração MQTT
 
 Há dois tipos de usuário, criados pelo serviço `mosquitto-auth` a partir do `.env`:
