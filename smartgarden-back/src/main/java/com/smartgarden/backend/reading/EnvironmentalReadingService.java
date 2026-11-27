@@ -1,6 +1,7 @@
 package com.smartgarden.backend.reading;
 
 import com.smartgarden.backend.common.PageResponse;
+import com.smartgarden.backend.common.TimeSeries;
 import com.smartgarden.backend.device.Device;
 import com.smartgarden.backend.device.DeviceService;
 import com.smartgarden.backend.reading.dto.CreateReadingRequest;
@@ -15,6 +16,8 @@ import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
+import java.time.Duration;
 import java.time.OffsetDateTime;
 import java.util.List;
 
@@ -45,18 +48,47 @@ public class EnvironmentalReadingService {
         }
 
         Device device = deviceService.findOrCreateByCode(request.deviceCode());
+        OffsetDateTime recordedAt = request.recordedAt() != null ? request.recordedAt() : OffsetDateTime.now();
+        readingRepository.findFirstByDeviceDeviceCodeOrderByRecordedAtDesc(request.deviceCode())
+                .ifPresent(previous -> rejectImplausibleJump(previous, request.temperatureC(), request.humidityPercent(), recordedAt));
 
         EnvironmentalReading reading = new EnvironmentalReading();
         reading.setDevice(device);
         reading.setTemperatureC(request.temperatureC());
         reading.setHumidityPercent(request.humidityPercent());
-        reading.setRecordedAt(request.recordedAt() != null ? request.recordedAt() : OffsetDateTime.now());
+        reading.setRecordedAt(recordedAt);
         reading.setMessageId(request.messageId());
 
         EnvironmentalReading saved = readingRepository.save(reading);
         ReadingResponse response = ReadingResponse.fromEntity(saved);
         eventPublisher.publishEvent(new ReadingCreatedEvent(response));
         return response;
+    }
+
+    /** Maior variação aceita entre duas leituras próximas: um cômodo não muda 5 °C ou 20 pontos de umidade em segundos. */
+    static final double MAX_TEMPERATURE_JUMP_C = 5.0;
+    static final double MAX_HUMIDITY_JUMP_PERCENT = 20.0;
+    /** Só compara com uma leitura recente; se o ambiente mudou de verdade, a leitura nova volta a ser aceita depois disso. */
+    static final Duration JUMP_WINDOW = Duration.ofMinutes(2);
+
+    /**
+     * Recusa uma leitura que salta demais em relação à anterior. O DHT22 às vezes entrega temperatura e umidade pela
+     * metade (um bit deslocado passa na conferência do próprio sensor); sem esta trava, o valor iria para o histórico,
+     * para os relatórios e para a estimativa de água. Pelo MQTT a leitura é descartada com um aviso no log.
+     */
+    static void rejectImplausibleJump(EnvironmentalReading previous, BigDecimal temperatureC, BigDecimal humidityPercent,
+                                      OffsetDateTime recordedAt) {
+        if (previous.getRecordedAt() == null || temperatureC == null || humidityPercent == null
+                || Duration.between(previous.getRecordedAt(), recordedAt).abs().compareTo(JUMP_WINDOW) >= 0) {
+            return;
+        }
+        double temperatureJump = Math.abs(temperatureC.doubleValue() - previous.getTemperatureC().doubleValue());
+        double humidityJump = Math.abs(humidityPercent.doubleValue() - previous.getHumidityPercent().doubleValue());
+        if (temperatureJump > MAX_TEMPERATURE_JUMP_C || humidityJump > MAX_HUMIDITY_JUMP_PERCENT) {
+            throw new IllegalArgumentException(String.format(java.util.Locale.ROOT,
+                    "Leitura descartada: salto implausível em relação à anterior (%.1f °C e %.1f pontos de umidade em menos de %d min).",
+                    temperatureJump, humidityJump, JUMP_WINDOW.toMinutes()));
+        }
     }
 
     @Transactional(readOnly = true)
@@ -121,9 +153,9 @@ public class EnvironmentalReadingService {
                 Sort.by(Sort.Direction.ASC, "recordedAt")
         );
 
-        List<ReadingResponse> points = history.stream()
+        List<ReadingResponse> points = TimeSeries.spread(history, EnvironmentalReading::getRecordedAt, windowStart, windowEnd, sanitizedLimit)
+                .stream()
                 .map(ReadingResponse::fromEntity)
-                .skip(Math.max(0, history.size() - sanitizedLimit))
                 .toList();
 
         String deviceName = points.isEmpty()

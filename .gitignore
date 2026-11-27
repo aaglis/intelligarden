@@ -10,8 +10,6 @@ secrets.h
 node_modules/
 target/
 dist/
-.angular/
-out-tsc/
 coverage/
 
 # ===== Logs =====

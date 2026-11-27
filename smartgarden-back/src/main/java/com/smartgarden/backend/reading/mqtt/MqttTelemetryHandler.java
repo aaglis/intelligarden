@@ -9,7 +9,6 @@ import jakarta.validation.Validator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.integration.annotation.ServiceActivator;
 import org.springframework.integration.mqtt.support.MqttHeaders;
 import org.springframework.messaging.Message;
 import org.springframework.stereotype.Component;
@@ -40,7 +39,6 @@ public class MqttTelemetryHandler {
         this.readingService = readingService;
     }
 
-    @ServiceActivator(inputChannel = "mqttInputChannel")
     public void handle(Message<?> message) {
         String topic = message.getHeaders().get(MqttHeaders.RECEIVED_TOPIC, String.class);
         String payload = message.getPayload() instanceof byte[] bytes

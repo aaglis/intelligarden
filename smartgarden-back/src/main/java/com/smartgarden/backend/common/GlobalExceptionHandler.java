@@ -7,6 +7,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.time.OffsetDateTime;
 import java.util.List;
@@ -48,6 +49,17 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<ApiErrorResponse> handleBadRequest(IllegalArgumentException exception) {
         return buildResponse(HttpStatus.BAD_REQUEST, List.of(exception.getMessage()));
+    }
+
+    /** Erros com status próprio (409 vaso real, 503 MQTT desligado, 502 broker fora) mantendo o motivo na resposta. */
+    @ExceptionHandler(ResponseStatusException.class)
+    public ResponseEntity<ApiErrorResponse> handleResponseStatus(ResponseStatusException exception) {
+        HttpStatus status = HttpStatus.resolve(exception.getStatusCode().value());
+        if (status == null) {
+            status = HttpStatus.INTERNAL_SERVER_ERROR;
+        }
+        String reason = exception.getReason() != null ? exception.getReason() : status.getReasonPhrase();
+        return buildResponse(status, List.of(reason));
     }
 
     private ResponseEntity<ApiErrorResponse> buildResponse(HttpStatus status, List<String> messages) {

@@ -74,6 +74,20 @@
     </dependencies>
 
     <build>
+        <resources>
+            <resource>
+                <directory>src/main/resources</directory>
+            </resource>
+            <!-- A interface 3D (../intelligarden-web) vira conteúdo estático: o backend serve a página em / -->
+            <resource>
+                <directory>${project.basedir}/../intelligarden-web</directory>
+                <targetPath>static</targetPath>
+                <includes>
+                    <include>index.html</include>
+                    <include>vendor/**</include>
+                </includes>
+            </resource>
+        </resources>
         <plugins>
             <plugin>
                 <groupId>org.springframework.boot</groupId>
