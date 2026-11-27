@@ -1030,11 +1030,11 @@ function niceStep(span, n) {
   const raw = span / n, mag = Math.pow(10, Math.floor(Math.log10(raw)));
   return [1, 2, 2.5, 5, 10].map((m) => m * mag).find((st) => st >= raw);
 }
-/* escala com 2 ou 3 marcas redondas; minSpan evita exagerar variações pequenas (0,3 °C não vira um pico) */
+/* escala com 3 a 5 marcas redondas, justa aos dados; minSpan evita exagerar variações pequenas (0,3 °C não vira um pico) */
 function scaleY(vals, minSpan) {
   let lo = Math.min(...vals), hi = Math.max(...vals);
   if (hi - lo < minSpan) { const c = (lo + hi) / 2; lo = c - minSpan / 2; hi = c + minSpan / 2; }
-  const step = niceStep(hi - lo, 2);
+  const step = niceStep(hi - lo, 3);
   lo = Math.floor(lo / step) * step;
   hi = Math.ceil(hi / step) * step;
   const ticks = [];
