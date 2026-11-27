@@ -1,6 +1,6 @@
-# SmartGarden Back
+# IntelliGarden · backend
 
-Backend do SmartGarden usando `Java 21`, `Spring Boot`, `PostgreSQL`, MQTT, REST e SSE.
+Backend do IntelliGarden usando `Java 21`, `Spring Boot`, `PostgreSQL`, MQTT, REST e SSE.
 
 ## Arquitetura desta fase
 

@@ -11,7 +11,7 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 @RestController
 @RequestMapping("/api/events")
-@Tag(name = "Events", description = "Atualizacoes em tempo real do SmartGarden")
+@Tag(name = "Events", description = "Atualizações em tempo real do IntelliGarden")
 public class ReadingEventStreamController {
 
     private final ReadingEventStreamService eventStreamService;

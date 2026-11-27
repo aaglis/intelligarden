@@ -1,6 +1,6 @@
-# SmartGarden Infra
+# IntelliGarden · infraestrutura
 
-Infraestrutura local do SmartGarden, responsável pelo PostgreSQL e pelo broker MQTT Mosquitto.
+Infraestrutura local do IntelliGarden, responsável pelo PostgreSQL e pelo broker MQTT Mosquitto.
 
 ## Serviços
 
@@ -125,7 +125,7 @@ Sem vasos de verdade, `simular-pesagens.py` faz o papel da equipe com a balança
 
 Se o sistema estiver certo, o k sugerido na ficha de cada planta chega perto do k verdadeiro que está no script (manjericão 2,6; lírio 2,2; jiboia 0,75). Num teste de 10 dias simulados no backend de teste, chegou a 2,61, 2,33 e 0,75.
 
-Todo registro sai com a nota "Pesagem simulada", para separar das pesagens de verdade. A página ainda não mostra essa nota: na ficha, a pesagem simulada aparece como uma pesagem comum.
+Todo registro sai com a nota "Pesagem simulada", para separar das pesagens de verdade. A ficha da planta mostra essas pesagens como "Pesagem simulada" e "balança simulada", o gráfico da água marca "pesagem simulada" e a linha da calibração diz "conferida com N pesagens simuladas".
 
 ```bash
 ./simular-pesagens.py            # pesa agora

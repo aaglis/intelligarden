@@ -1,4 +1,6 @@
-# SmartGarden
+# IntelliGarden
+
+> O projeto se chamava SmartGarden. As pastas, os pacotes Java, os containers, o banco e os tópicos MQTT continuam com o nome antigo: trocar esses nomes só traria risco.
 
 Jardim virtual com ESP32 e sensor DHT22: o dispositivo mede temperatura e umidade do ar; o backend guarda as leituras, estima a água no vaso de cada planta pelo clima (VPD × k, calibrado com pesagens) e dispara a irrigação simulada (LED do ESP32) quando uma planta chega no limite. A interface 3D (`intelligarden-web`), servida pelo próprio backend, mostra o jardim com esses dados em tempo real, os gráficos de histórico e o registro diário.
 

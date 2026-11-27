@@ -672,21 +672,25 @@ function fineText(p) {
   const d = p.api;
   if (!d) return `${base} Dados de exemplo, sem servidor.`;
   if (!d.calibrationSamples) return `${base} Ainda sem pesagens para conferir a estimativa.`;
-  const n = d.calibrationSamples;
-  let t = ` Conferida com ${n} ${n === 1 ? 'pesagem' : 'pesagens'}`;
+  const n = d.calibrationSamples, sim = hasSimulated(p) ? (n === 1 ? ' simulada' : ' simuladas') : '';
+  let t = ` Conferida com ${n} ${n === 1 ? 'pesagem' : 'pesagens'}${sim}`;
   if (d.meanErrorPercent != null) t += `: erro médio de ${fmtN(d.meanErrorPercent, 0)} %`;
   if (d.suggestedCoefficient != null) t += `. Coeficiente de perda sugerido ${fmtN(d.suggestedCoefficient, 2)} (em uso: ${fmtN(d.lossCoefficient, 2)})`;
   return `${base}${t}.`;
 }
+/* pesagens do simulador (smartgarden-infra/simular-pesagens.py), para testar sem vaso real, chegam com esta nota */
+const isSimulated = (r) => r.type === 'weighing' && /^Pesagem simulada/.test(r.note || '');
+const hasSimulated = (p) => (p.records || []).some(isSimulated) || ((p.wh && p.wh.weighings) || []).some((m) => m.sim);
 function eventOf(r) {
   const when = whenText(r.recordedAt);
   if (r.type === 'weighing') {
+    const sim = isSimulated(r);
     let detail;
     if (r.fullPot) detail = 'vaso cheio, virou a referência';
     else if (r.measuredLossMl != null) detail = r.measuredLossMl > 0 ? `perdeu ${fmtInt(r.measuredLossMl)} mL, o sistema estimou ${fmtInt(r.estimatedLossMl)} mL` : 'mais pesado que na pesagem anterior';
     else detail = 'sem comparação: primeira pesagem ou houve rega antes';
-    if (!r.fullPot && r.measuredWaterPercent != null) detail += ` · balança: ${Math.round(r.measuredWaterPercent)} % de água`;
-    return { type: 'pesagem', title: `Pesagem: ${fmtInt(r.weightGrams)} g`, detail, when };
+    if (!r.fullPot && r.measuredWaterPercent != null) detail += ` · ${sim ? 'balança simulada' : 'balança'}: ${Math.round(r.measuredWaterPercent)} % de água`;
+    return { type: 'pesagem', title: `${sim ? 'Pesagem simulada' : 'Pesagem'}: ${fmtInt(r.weightGrams)} g`, detail, when };
   }
   if (r.type === 'watering') return { type: 'rega', title: `Rega: ${fmtInt(r.waterMl)} mL`, detail: r.drained ? 'feita pela equipe, escorrida' : 'feita pela equipe, sem confirmar o escoamento', when };
   if (r.type === 'irrigation') {
@@ -1198,7 +1202,7 @@ async function loadWater(p) {
     p.wh = {
       points: (h.points || []).map((x) => ({ t: Date.parse(x.recordedAt), w: x.waterPercent })),
       weighings: (recs || []).filter((r) => r.type === 'weighing' && r.measuredWaterPercent != null)
-        .map((r) => ({ t: Date.parse(r.recordedAt), w: r.measuredWaterPercent })),
+        .map((r) => ({ t: Date.parse(r.recordedAt), w: r.measuredWaterPercent, sim: isSimulated(r) })),
       at: Date.now()
     };
   } catch (err) {
@@ -1272,7 +1276,7 @@ function renderWater(p) {
     .map(([k, e]) => `<tr><td>${esc(histWhen(k))}</td><td>${e.w == null ? '–' : `${Math.round(e.w)} %`}</td><td>${e.m == null ? '–' : `${Math.round(e.m)} %`}</td></tr>`).join('');
   const lo = Math.min(...pts.map((q) => q.w)), hi = Math.max(...pts.map((q) => q.w));
   const label = `Água estimada no vaso, de ${Math.round(lo)} a ${Math.round(hi)} %, limite ${fmtN(p.limit)} %${weigh.length ? `, ${weigh.length} ${weigh.length === 1 ? 'pesagem' : 'pesagens'} marcadas` : ''}. Use as setas para ler os valores.`;
-  box.innerHTML = `<p class="w-legend"><span><i class="k"></i>estimada</span>${weigh.length ? '<span><i class="m"></i>pesagem (balança)</span>' : ''}<span><i class="l"></i>limite ${fmtN(p.limit)} %</span></p>`
+  box.innerHTML = `<p class="w-legend"><span><i class="k"></i>estimada</span>${weigh.length ? `<span><i class="m"></i>${weigh.every((m) => m.sim) ? 'pesagem simulada' : weigh.some((m) => m.sim) ? 'pesagem (balança ou simulada)' : 'pesagem (balança)'}</span>` : ''}<span><i class="l"></i>limite ${fmtN(p.limit)} %</span></p>`
     + `<div style="position: relative"><svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" tabindex="0" role="img" aria-label="${esc(label)}">${body}</svg><div class="h-tip" hidden></div></div>`
     + `<details class="h-table"${tableOpen ? ' open' : ''}><summary>Ver em tabela (por hora)</summary><table><thead><tr><th>Hora</th><th>Estimada</th><th>Pesagem</th></tr></thead><tbody>${rows}</tbody></table></details>`;
 
@@ -1292,7 +1296,7 @@ function renderWater(p) {
     const val = twin.length > 1 ? `${Math.round(twin[0].w)} → ${Math.round(twin[twin.length - 1].w)} %` : `${Math.round(q.w)} %`;
     tip.innerHTML = `<span>${esc(q.now ? 'agora' : histWhen(q.t))}</span>`
       + `<span><i class="k" style="background: var(--c-water)"></i><b>${val}</b> estimada</span>`
-      + (m ? `<span><i class="m"></i><b>${Math.round(m.w)} %</b> pesagem</span>` : '');
+      + (m ? `<span><i class="m"></i><b>${Math.round(m.w)} %</b> ${m.sim ? 'pesagem simulada' : 'pesagem'}</span>` : '');
     tip.hidden = false;
     const k = svg.getBoundingClientRect().width / W, half = tip.offsetWidth / 2;
     tip.style.left = `${clamp(+x * k, half, box.clientWidth - half)}px`;
@@ -2609,6 +2613,8 @@ function refreshLog(p) {
   if (selectedId !== p.id) return;
   const l = $('#s-log');
   if (l) l.innerHTML = logMarkup(p);
+  const f = $('#s-fine'); /* o rodapé diz se as pesagens são simuladas, o que só se sabe com os registros */
+  if (f) f.textContent = fineText(p);
 }
 function climateRows(p) {
   if (CLIMATE.temp == null) return '<div><dt>Ainda sem leitura do sensor</dt><dd>--</dd></div>';
