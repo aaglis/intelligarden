@@ -68,6 +68,24 @@ arduino-cli upload -p /dev/ttyACM0 --fqbn esp32:esp32:esp32 esp32-dht22-serial
 
 No Linux, o usuário precisa de acesso à porta serial: `sudo usermod -aG dialout $USER` e novo login.
 
+## Leituras estranhas do sensor
+
+O DHT22 às vezes devolve uma leitura errada isolada (por exemplo, metade do valor real) ou falha. Desde a versão 1.2.0, antes de publicar, o ESP32 compara a leitura com a última aceita:
+
+- se a leitura falhou ou saltou mais de 5 °C ou 20 pontos de umidade em menos de 2 minutos, espera 2,1 s (o DHT22 mede no máximo a cada 2 s) e lê de novo, até 3 tentativas;
+- a primeira leitura plausível é publicada; se as 3 falharem, nada é publicado nesse ciclo;
+- depois de 2 minutos sem leitura aceita, a próxima leitura válida é aceita sem comparação, para uma mudança real do ambiente não ficar bloqueada.
+
+Os limites são os mesmos que o backend usa para descartar leituras. O monitor serial mostra `Releitura: a tentativa 2 corrigiu um salto impossivel.` quando isso acontece.
+
+A lógica fica em `esp32-dht22-serial/plausibilidade.h`, sem dependência do Arduino, e tem testes que rodam no computador:
+
+```bash
+g++ -std=c++17 -Wall -Wextra -I esp32-dht22-serial teste/teste_plausibilidade.cpp -o /tmp/teste && /tmp/teste
+# sem g++ instalado, num container descartável:
+docker run --rm -v "$PWD":/src:ro -w /src alpine:3.20 sh -c 'apk add --no-cache g++ >/dev/null && g++ -std=c++17 -I esp32-dht22-serial teste/teste_plausibilidade.cpp -o /tmp/t && /tmp/t'
+```
+
 ## Tópicos
 
 | Tópico | Sentido | Para quê |
@@ -93,7 +111,7 @@ No Linux, o usuário precisa de acesso à porta serial: `sudo usermod -aG dialou
 ### Status
 
 ```json
-{ "state": "online", "ip": "10.50.22.73", "firmware": "1.1.0" }
+{ "state": "online", "ip": "10.50.22.73", "firmware": "1.2.0" }
 ```
 
 Ao conectar, o ESP32 registra no broker o "testamento" `{"state":"offline"}`. Se ele desligar ou perder o Wi-Fi sem se despedir, o broker publica isso sozinho em até 45 s.
