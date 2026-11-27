@@ -5,6 +5,13 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>IntelliGarden 3D</title>
 <link rel="stylesheet" href="vendor/fonts/fonts.css">
+<link rel="preload" href="vendor/fonts/geist-latin.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="vendor/fonts/bricolage-grotesque-latin.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="vendor/fonts/geist-mono-latin.woff2" as="font" type="font/woff2" crossorigin>
+<script type="importmap">
+{ "imports": { "three": "./vendor/three/three.module.min.js", "three/addons/": "./vendor/three/addons/" } }
+</script>
+<link rel="modulepreload" href="vendor/three/three.module.min.js">
 <style>
 /* Layout: palco 3D em tela cheia, a sala é uma maquete branca com paredes cortadas (poché escuro) e as plantas são a única cor.
    Topo: marca + leitura do sensor. Base: dock com vista e plantas. Ficha da planta desliza da direita (folha inferior no celular). */
@@ -67,8 +74,20 @@ p { margin: 0; }
 #scene { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; outline: none; cursor: grab; }
 #scene.is-over { cursor: pointer; }
 #scene.is-drag { cursor: grabbing; }
-.loading { position: absolute; inset: 0; display: grid; place-items: center; font-family: var(--f-mono); font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); pointer-events: none; transition: opacity 0.6s; }
-.loading.done { opacity: 0; }
+/* Carregamento: uma tela só, com as etapas reais. A sala aparece pronta, já com os dados, e a entrada começa do zero. */
+.loading { position: absolute; inset: 0; z-index: 40; display: grid; place-items: center; padding: 24px; background: radial-gradient(120% 95% at 50% 36%, var(--bg-hi) 0%, var(--bg) 64%); transition: opacity 0.5s var(--ease), visibility 0.5s; }
+.loading.done { opacity: 0; visibility: hidden; pointer-events: none; }
+.ld-box { display: grid; justify-items: center; gap: 16px; text-align: center; }
+.ld-brand { display: flex; align-items: center; gap: 9px; font-family: var(--f-display); font-weight: 600; font-size: 28px; line-height: 1; letter-spacing: -0.02em; color: var(--ink); }
+.ld-brand svg { width: 24px; height: 24px; color: var(--leaf); flex: none; }
+/* a barra anda por transform: continua se movendo mesmo enquanto o navegador está ocupado montando a sala */
+.ld-bar { position: relative; width: 168px; height: 3px; border-radius: 2px; background: var(--surface-3); overflow: hidden; }
+.ld-bar i { position: absolute; inset: 0 auto 0 0; width: 40%; border-radius: inherit; background: var(--leaf); animation: ld-slide 1.2s var(--ease) infinite; will-change: transform; }
+@keyframes ld-slide { from { transform: translateX(-100%); } to { transform: translateX(250%); } }
+.ld-step { min-height: 1.5em; font-family: var(--f-mono); font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
+.loading.failed .ld-bar { display: none; }
+.loading.failed .ld-step { max-width: 34ch; font-family: var(--f-body); font-size: 14px; letter-spacing: 0; text-transform: none; color: var(--ink); }
+.app.is-loading .top, .app.is-loading .dock, .app.is-loading .hint, .app.is-loading #markers { visibility: hidden; animation: none; }
 @keyframes rise { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
 
 /* Marcadores sobre as plantas */
@@ -90,7 +109,10 @@ p { margin: 0; }
 .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--c); flex: none; }
 
 /* Topo */
-.top { position: absolute; top: calc(18px + env(safe-area-inset-top, 0px)); left: calc(20px + env(safe-area-inset-left, 0px)); right: calc(20px + env(safe-area-inset-right, 0px)); display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; pointer-events: none; animation: rise 0.8s var(--ease) 1.5s backwards; }
+.top { position: absolute; top: calc(18px + env(safe-area-inset-top, 0px)); left: calc(20px + env(safe-area-inset-left, 0px)); right: calc(20px + env(safe-area-inset-right, 0px)); display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; pointer-events: none; isolation: isolate; animation: rise 0.8s var(--ease) 1.5s backwards; }
+/* fundo suave atrás do topo quando a câmera chega perto (foco e "por dentro"), para o texto não se misturar com o 3D */
+.top::before { content: ""; position: absolute; z-index: -1; left: -48px; right: -48px; top: calc(-18px - env(safe-area-inset-top, 0px)); height: calc(100% + 54px + env(safe-area-inset-top, 0px)); background: linear-gradient(to bottom, color-mix(in srgb, var(--bg) 90%, transparent) 45%, transparent); opacity: 0; transition: opacity 0.4s; pointer-events: none; }
+.app[data-mode="focus"] .top::before, .app[data-mode="inside"] .top::before { opacity: 1; }
 .top > * { pointer-events: auto; }
 .brand-name { display: flex; align-items: center; gap: 8px; font-family: var(--f-display); font-weight: 600; font-size: 23px; line-height: 1; letter-spacing: -0.02em; }
 .brand-name svg { width: 20px; height: 20px; color: var(--leaf); flex: none; }
@@ -291,9 +313,15 @@ textarea.txt:focus { border-color: var(--ink); }
 </head>
 <body>
 
-<div class="app" id="app" data-mode="intro">
+<div class="app is-loading" id="app" data-mode="intro">
   <canvas id="scene" role="img" aria-label="Maquete 3D do cantinho da janela: duas plantas no parapeito, uma pendurada, uma no alto da estante e duas no chão, com o sensor IG-01 na parede, à sombra. Use a lista de plantas na parte de baixo para abrir cada uma."></canvas>
-  <div class="loading" id="loading">Montando a sala</div>
+  <div class="loading" id="loading" role="status">
+    <div class="ld-box">
+      <p class="ld-brand"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21v-8"/><path d="M12 13c0-4.5 3-7.5 8-8 0 5-3 8-8 8z"/><path d="M12 15c0-3.5-2.4-6-6.5-6.5 0 4 2.4 6.5 6.5 6.5z"/></svg>IntelliGarden</p>
+      <div class="ld-bar" aria-hidden="true"><i></i></div>
+      <p class="ld-step" id="ld-step">Carregando o 3D</p>
+    </div>
+  </div>
   <div id="markers"></div>
 
   <header class="top">
@@ -372,16 +400,26 @@ textarea.txt:focus { border-color: var(--ink); }
   </dialog>
 </div>
 
-<script type="importmap">
-{ "imports": { "three": "./vendor/three/three.module.min.js", "three/addons/": "./vendor/three/addons/" } }
+<script>
+/* se o 3D não abrir (arquivo faltando, navegador sem suporte), a tela de carregamento avisa em vez de ficar rodando para sempre */
+window.igFail = function (msg) {
+  var l = document.getElementById('loading');
+  if (!l || l.classList.contains('done')) return;
+  l.classList.add('failed');
+  document.getElementById('ld-step').textContent = msg;
+};
+setTimeout(function () { window.igFail('A página está demorando demais para abrir. Recarregue para tentar de novo.'); }, 45000);
 </script>
-<script type="module">
+<script type="module" onerror="igFail('Não deu para carregar o 3D. Confira a conexão e recarregue a página.')">
 import * as THREE from 'three';
 import { RectAreaLightUniformsLib } from 'three/addons/lights/RectAreaLightUniformsLib.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 
 const $ = (s, r = document) => r.querySelector(s);
 const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+const ldStep = (t) => { const el = $('#ld-step'); if (el) el.textContent = t; };
+/* espera o navegador pintar, para a etapa do carregamento aparecer antes de um trecho pesado */
+const nextPaint = () => new Promise((r) => requestAnimationFrame(() => setTimeout(r, 0)));
 const V3 = THREE.Vector3;
 const clamp = THREE.MathUtils.clamp;
 const lerp = THREE.MathUtils.lerp;
@@ -711,14 +749,11 @@ function applyAll({ list, device, reading }, animate) {
 }
 async function boot() {
   let data = null, why = 'Modo de exemplo pedido no endereço (?demo).';
-  if (!QS.has('demo')) {
-    try {
-      data = await loadAll();
-      if (!data.list.some((d) => byId[d.code])) throw new Error(`Nenhuma planta da maquete está cadastrada para o sensor ${DEVICE}.`);
-    } catch (err) {
-      data = null;
-      why = err.message;
-    }
+  if (firstLoad) {
+    const r = await firstLoad;
+    if (r.err) why = r.err.message;
+    else if (!r.data.list.some((d) => byId[d.code])) why = `Nenhuma planta da maquete está cadastrada para o sensor ${DEVICE}.`;
+    else data = r.data;
   }
   if (data) startLive(data); else startDemo(why);
   booted = true;
@@ -910,6 +945,12 @@ function refreshSensorSheet() {
   set('s-facts', factsMarkup());
 }
 
+/* ---------------- carregamento ---------------- */
+/* Os dados do servidor começam a chegar enquanto a sala é montada; a sala só aparece com tudo pronto (fim do arquivo). */
+const firstLoad = QS.has('demo') ? null : loadAll().then((data) => ({ data }), (err) => ({ err }));
+ldStep('Montando a sala');
+await nextPaint();
+
 /* ---------------- renderer ---------------- */
 const app = $('#app');
 const canvas = $('#scene');
@@ -917,7 +958,7 @@ let renderer;
 try {
   renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
 } catch (err) {
-  $('#loading').textContent = 'Este navegador não conseguiu abrir o 3D (WebGL desativado).';
+  window.igFail('Este navegador não conseguiu abrir o 3D (WebGL desativado ou sem suporte).');
   throw err;
 }
 renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
@@ -1864,7 +1905,7 @@ scene.add(air);
 const S = (t = new V3(), yaw = 0, pitch = 0.5, dist = 10, fov = 30) => ({ t, yaw, pitch, dist, fov });
 const cloneS = (s) => S(s.t.clone(), s.yaw, s.pitch, s.dist, s.fov);
 const setS = (d, s) => { d.t.copy(s.t); d.yaw = s.yaw; d.pitch = s.pitch; d.dist = s.dist; d.fov = s.fov; };
-const rig = { cur: S(), goal: S(), flight: null, lim: null, shift: { x: 0, y: 0, gx: 0, gy: 0 } };
+const rig = { cur: S(), goal: S(), flight: null, lim: null, zoom: 1, shift: { x: 0, y: 0, gx: 0, gy: 0 } };
 let viewW = 1, viewH = 1;
 const aspect = () => viewW / viewH;
 
@@ -1910,13 +1951,12 @@ function stepRig(dt, now) {
     c.t.lerp(g.t, a);
     c.yaw += (g.yaw - c.yaw) * a;
     c.pitch += (g.pitch - c.pitch) * a;
-    c.dist += (g.dist - c.dist) * a;
     c.fov += (g.fov - c.fov) * a;
-    if (mode === 'focus') {
-      const m = maxDistInRoom(c.t, c.yaw, c.pitch);
-      if (c.dist > m) c.dist = m;
-      if (g.dist > m) g.dist = m;
-    }
+    /* no foco, a parede encurta a distância só enquanto estiver no caminho; a distância escolhida (g.dist) não muda,
+       então girar de volta afasta a câmera de novo */
+    const gd = mode === 'focus' ? Math.min(g.dist, maxDistInRoom(g.t, g.yaw, g.pitch)) : g.dist;
+    c.dist += (gd - c.dist) * a;
+    if (mode === 'focus') c.dist = Math.min(c.dist, maxDistInRoom(c.t, c.yaw, c.pitch));
   }
   const cp = Math.cos(c.pitch);
   camera.position.set(c.t.x + Math.sin(c.yaw) * cp * c.dist, c.t.y + Math.sin(c.pitch) * c.dist, c.t.z + Math.cos(c.yaw) * cp * c.dist);
@@ -1938,8 +1978,8 @@ const fitCam = new THREE.PerspectiveCamera();
 const TOP_SPACE = 70;
 const dockSpace = () => { const d = $('.dock'); return d ? d.offsetHeight + 34 : 110; };
 /* enquadra a maquete inteira: ajusta distância e centro projetando os cantos reais */
-function overviewState() {
-  const a = aspect(), portrait = a < 0.9, fov = portrait ? 40 : 30, yaw = -0.6, pitch = 0.56;
+function fitOverview(yaw, pitch, fov) {
+  const a = aspect(), portrait = a < 0.9;
   const availW = portrait ? viewW - 8 : viewW - 40, availH = Math.max(200, viewH - TOP_SPACE - dockSpace() - 16);
   const t = new V3(0.1, 0.7, -0.1);
   let dist = 10;
@@ -1959,7 +1999,18 @@ function overviewState() {
     t.addScaledVector(right, ((x0 + x1) / 2) * halfW).addScaledVector(up, ((y0 + y1) / 2) * halfH);
     dist *= k;
   }
-  return S(t, yaw, pitch, dist, fov);
+  return { t, dist };
+}
+function overviewState() {
+  const fov = aspect() < 0.9 ? 40 : 30, yaw = -0.6, pitch = 0.56;
+  const f = fitOverview(yaw, pitch, fov);
+  return S(f.t, yaw, pitch, f.dist, fov);
+}
+/* na maquete, girar e aproximar mantêm a sala enquadrada: alvo e distância são recalculados para o ângulo atual, e o zoom é relativo */
+function refitOverview() {
+  const g = rig.goal, f = fitOverview(g.yaw, g.pitch, g.fov);
+  g.t.copy(f.t);
+  g.dist = f.dist * rig.zoom;
 }
 /* "por dentro": um ponto só, de pé na frente do cantinho; arrastar olha em volta */
 const EYE = new V3(-0.12, 1.55, 1.12), LOOK = new V3(0.35, 0.85, -1.1);
@@ -1970,7 +2021,7 @@ function insideState() {
 function plantState(p) {
   const portrait = aspect() < 0.9;
   const pitch = p.pitch !== undefined ? p.pitch : 0.36;
-  const dist = Math.min(p.view * (portrait ? 1.3 : 1), maxDistInRoom(p.focus, p.yaw, pitch));
+  const dist = Math.min(p.view * (portrait ? 1.45 : 1), maxDistInRoom(p.focus, p.yaw, pitch));
   return S(p.focus.clone(), p.yaw, pitch, dist, portrait ? 50 : 36);
 }
 function sensorState() {
@@ -1978,8 +2029,9 @@ function sensorState() {
   return S(new V3(1.3, 1.46, IN.z0 + 0.03), -0.32, 0.08, portrait ? 0.8 : 0.55, portrait ? 50 : 36);
 }
 const LIM = {
-  overview: (st) => ({ yaw: [st.yaw - 0.18, 0.66], pitch: [0.3, 1.2], dist: [st.dist * 0.55, st.dist * 1.2], fov: [10, 80] }),
-  inside: { pitch: [-0.6, 0.65], dist: [0.05, 0.05], fov: [34, 80] },
+  overview: (st) => ({ yaw: [st.yaw - 0.18, 0.66], pitch: [0.3, 1.2], dist: [0.1, 99], fov: [10, 80] }),
+  /* "por dentro" gira até ver as duas paredes laterais, sem chegar na parede vazia da porta */
+  inside: (st) => ({ yaw: [st.yaw, 1.15], pitch: [-0.6, 0.65], dist: [0.05, 0.05], fov: [34, 80] }),
   focus: (st) => ({ yaw: [st.yaw, 1.0], pitch: [0.0, 1.1], dist: [0.45, 2.2], fov: [20, 80] })
 };
 
@@ -2000,19 +2052,21 @@ function goOverview() {
   const st = overviewState();
   setMode('overview');
   rig.lim = LIM.overview(st);
+  rig.zoom = 1;
   fly(st, 1.4);
   showHint('overview');
 }
 function goInside() {
   if (mode === 'focus') closeSheet();
   setMode('inside');
-  rig.lim = LIM.inside;
-  fly(insideState(), 1.8);
+  const st = insideState();
+  rig.lim = LIM.inside(st);
+  fly(st, 1.8);
   showHint('inside');
 }
 function rememberReturn() {
   if (mode === 'focus') return;
-  returnTo = { mode: mode === 'intro' ? 'overview' : mode, state: cloneS(rig.flight ? rig.flight.to : rig.goal) };
+  returnTo = { mode: mode === 'intro' ? 'overview' : mode, state: cloneS(rig.flight ? rig.flight.to : rig.goal), zoom: rig.flight ? 1 : rig.zoom };
 }
 function focusPlant(id, focusAct) {
   const p = byId[id];
@@ -2048,12 +2102,14 @@ function back() {
   returnTo = null;
   if (r.mode === 'inside') {
     setMode('inside');
-    rig.lim = LIM.inside;
+    rig.lim = LIM.inside(insideState());
   } else {
     setMode('overview');
     rig.lim = LIM.overview(overviewState());
+    rig.zoom = r.zoom || 1;
   }
-  fly(r.state, 1.2);
+  /* se a janela mudou de tamanho enquanto a ficha estava aberta, reenquadra ao chegar */
+  fly(r.state, 1.2, () => { if (mode === 'overview') refitOverview(); });
 }
 function stepPlant(d) {
   const i = plants.findIndex((p) => p.id === selectedId);
@@ -2100,7 +2156,7 @@ plants.forEach((p) => {
   b.addEventListener('click', () => focusPlant(p.id));
   b.addEventListener('mouseenter', () => setHot(p.id));
   b.addEventListener('mouseleave', () => setHot(null));
-  b.addEventListener('focus', () => setHot(p.id));
+  b.addEventListener('focus', () => { if (b.matches(':focus-visible')) setHot(p.id); });
   b.addEventListener('blur', () => setHot(null));
   plist.appendChild(li);
   dockEls[p.id] = b;
@@ -2293,7 +2349,7 @@ function updateShift() {
   const open = sheet.classList.contains('open');
   const mobile = window.innerWidth <= 720;
   rig.shift.gx = open && !mobile ? (sheet.offsetWidth + 16) / 2 : 0;
-  rig.shift.gy = open && mobile ? sheet.offsetHeight / 2 : (!open ? (dockSpace() - TOP_SPACE) / 2 : 0);
+  rig.shift.gy = open ? (mobile ? (sheet.offsetHeight - TOP_SPACE) / 2 : -TOP_SPACE / 2) : (dockSpace() - TOP_SPACE) / 2;
   app.style.setProperty('--sheet-w', open && !mobile ? `${sheet.offsetWidth + 32}px` : '0px');
 }
 sheet.addEventListener('click', (e) => {
@@ -2567,8 +2623,16 @@ function pick(x, y) {
   for (const h of raycaster.intersectObjects(list, true)) if (visibleChain(h.object)) return h;
   return null;
 }
+/* mexer durante um voo de câmera (inclusive a entrada) assume o controle na hora: o voo vai direto ao destino e o gesto vale dali */
+function takeControl() {
+  const f = rig.flight;
+  if (!f) return;
+  rig.flight = null;
+  setS(rig.goal, f.to);
+  if (f.done) f.done();
+}
 function rotateBy(dx, dy) {
-  if (rig.flight || mode === 'intro') return;
+  takeControl();
   const g = rig.goal;
   if (mode === 'inside') {
     const k = 0.0042 * (g.fov / 58);
@@ -2579,14 +2643,18 @@ function rotateBy(dx, dy) {
     g.pitch += dy * 0.0055;
   }
   applyLimits();
+  if (mode === 'overview') refitOverview();
 }
 function zoomBy(f) {
-  if (rig.flight || mode === 'intro') return;
-  if (mode === 'inside') rig.goal.fov *= f; else rig.goal.dist *= f;
+  takeControl();
+  const g = rig.goal;
+  if (mode === 'inside') g.fov *= f;
+  else if (mode === 'overview') { rig.zoom = clamp(rig.zoom * f, 0.55, 1.2); refitOverview(); }
+  /* no foco, parte da distância real (já limitada pela parede): aproximar responde na hora */
+  else g.dist = Math.min(g.dist, maxDistInRoom(g.t, g.yaw, g.pitch)) * f;
   applyLimits();
 }
 function onTap(x, y) {
-  if (mode === 'intro') return;
   const hit = pick(x, y);
   const ud = hit ? hit.object.userData : {};
   if (ud.plantId) focusPlant(ud.plantId);
@@ -2804,13 +2872,12 @@ function resize() {
     const st = overviewState();
     rig.lim = LIM.overview(st);
     rig.goal.fov = st.fov;
-    rig.goal.dist = clamp(rig.goal.dist, rig.lim.dist[0], rig.lim.dist[1]);
+    refitOverview();
   }
 }
 new ResizeObserver(resize).observe(canvas);
 
-let started = false, last = performance.now();
-const t0 = last;
+let last = performance.now(), t0 = last;
 const perf = { acc: 0, n: 0 };
 function adapt(raw, t) {
   if (t < 5 || mode === 'intro' || document.hidden) return;
@@ -2836,7 +2903,6 @@ function tick(now) {
   updateLED(t, now);
   renderer.render(scene, camera);
   updateMarkers();
-  if (!started) { started = true; $('#loading').classList.add('done'); }
   requestAnimationFrame(tick);
 }
 
@@ -2855,11 +2921,33 @@ window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', rea
 new MutationObserver(readTheme).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
 
 resize();
+/* Abertura: compila os shaders e desenha o primeiro quadro por baixo da tela de carregamento, espera os dados e as fontes
+   e só então mostra a sala. A entrada começa do zero, sem pular quadros, e os números já estão no lugar. */
 {
   const ov = overviewState();
   rig.lim = LIM.overview(ov);
+  const first = reduce ? ov : S(ov.t.clone(), ov.yaw - 0.7, 1.3, ov.dist * 1.25, ov.fov);
+  setS(rig.cur, first);
+  setS(rig.goal, first);
+  stepRig(0, performance.now());
+  try {
+    await renderer.compileAsync(scene, camera);
+  } catch {
+    /* sem compilação assíncrona, o primeiro quadro compila o que faltar */
+  }
+  renderer.render(scene, camera);
+  ldStep(firstLoad ? 'Buscando os dados do jardim' : 'Abrindo os dados de exemplo');
+  await Promise.all([boot(), document.fonts ? document.fonts.ready.catch(() => {}) : null]);
+  reveal();
+}
+function reveal() {
+  const ov = overviewState();
+  rig.lim = LIM.overview(ov);
+  rig.zoom = 1;
+  t0 = last = performance.now();
   if (reduce) {
-    setS(rig.cur, ov); setS(rig.goal, ov);
+    setS(rig.cur, ov);
+    setS(rig.goal, ov);
     setMode('overview');
     showHint('overview');
   } else {
@@ -2868,9 +2956,10 @@ resize();
     setMode('intro');
     fly(ov, 2.8, () => { setMode('overview'); showHint('overview'); });
   }
+  $('#loading').classList.add('done');
+  app.classList.remove('is-loading');
+  requestAnimationFrame(tick);
 }
-requestAnimationFrame(tick);
-boot();
 </script>
 </body>
 </html>
