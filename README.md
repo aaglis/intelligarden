@@ -37,7 +37,7 @@ Para gravar o ESP32, crie `smartgarden-firmware/esp32-dht22-serial/secrets.h` a 
 
 ## Vasos reais e pesagem diária
 
-Manjericão, lírio-da-paz e jiboia são vasos reais: a equipe rega de verdade e pesa todo dia, e as pesagens conferem e calibram a água estimada. Passo a passo em [`docs/pesagem-diaria.md`](docs/pesagem-diaria.md).
+Manjericão, lírio-da-paz e jiboia são vasos reais: a equipe rega de verdade e pesa todo dia, e as pesagens conferem e calibram a água estimada. Passo a passo em [`docs/pesagem-diaria.md`](docs/pesagem-diaria.md). Sem vasos de verdade, `smartgarden-infra/simular-pesagens.py` simula essas pesagens, marcadas como simuladas, para testar a calibração ([README da infra](smartgarden-infra/README.md#pesagens-simuladas-teste-sem-vaso-real)).
 
 De onde vem cada número das plantas (faixas de temperatura e umidade, rega, base do modelo de água), com as fontes: [`docs/fichas-das-plantas.md`](docs/fichas-das-plantas.md).
 
